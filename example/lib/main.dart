@@ -75,7 +75,7 @@ class _MyHomePageState extends State<MyHomePage> {
         statusText += '\nDownloaded count: ${downloadedModels.length}';
         _status = statusText;
       });
-      print('DEBUG: Status updated: $statusText');
+      print('DEBUG: Status updated: $_status');
     } catch (e) {
       print('DEBUG: Error in _checkModelStatus: $e');
       setState(() {
