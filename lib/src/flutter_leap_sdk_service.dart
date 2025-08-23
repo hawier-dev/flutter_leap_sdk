@@ -12,6 +12,7 @@ class FlutterLeapSdkService {
 
   static bool _isModelLoaded = false;
   static String _currentLoadedModel = '';
+  static bool _isDownloaderInitialized = false;
 
   // Available LEAP models from Liquid AI
   static const Map<String, ModelInfo> availableModels = {
@@ -37,6 +38,24 @@ class FlutterLeapSdkService {
 
   static String get currentLoadedModel => _currentLoadedModel;
   static bool get isModelLoaded => _isModelLoaded;
+
+  /// Initialize flutter_downloader
+  static Future<void> initialize() async {
+    if (!_isDownloaderInitialized) {
+      await FlutterDownloader.initialize(
+        debug: false,
+        ignoreSsl: false,
+      );
+      _isDownloaderInitialized = true;
+    }
+  }
+
+  /// Ensure downloader is initialized before any download operation
+  static Future<void> _ensureDownloaderInitialized() async {
+    if (!_isDownloaderInitialized) {
+      await initialize();
+    }
+  }
 
   /// Load a model from the specified path
   static Future<String> loadModel({String? modelPath}) async {
@@ -141,6 +160,8 @@ class FlutterLeapSdkService {
     String? modelName,
     Function(DownloadProgress)? onProgress,
   }) async {
+    await _ensureDownloaderInitialized();
+    
     try {
       final fileName = modelName ?? 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle';
       final tempFileName = '$fileName.temp';
@@ -178,6 +199,7 @@ class FlutterLeapSdkService {
   static void _monitorDownloadProgress(String taskId, Function(DownloadProgress) onProgress) {
     Timer.periodic(const Duration(seconds: 1), (timer) async {
       try {
+        await _ensureDownloaderInitialized();
         final tasks = await FlutterDownloader.loadTasks();
         final task = tasks?.firstWhere((t) => t.taskId == taskId, orElse: () => throw Exception('Task not found'));
         
@@ -205,6 +227,8 @@ class FlutterLeapSdkService {
 
   /// Cancel download by taskId
   static Future<void> cancelDownload(String taskId) async {
+    await _ensureDownloaderInitialized();
+    
     try {
       await FlutterDownloader.cancel(taskId: taskId);
     } catch (e) {
@@ -214,6 +238,8 @@ class FlutterLeapSdkService {
 
   /// Pause download by taskId
   static Future<void> pauseDownload(String taskId) async {
+    await _ensureDownloaderInitialized();
+    
     try {
       await FlutterDownloader.pause(taskId: taskId);
     } catch (e) {
@@ -223,6 +249,8 @@ class FlutterLeapSdkService {
 
   /// Resume download by taskId
   static Future<String?> resumeDownload(String taskId) async {
+    await _ensureDownloaderInitialized();
+    
     try {
       return await FlutterDownloader.resume(taskId: taskId);
     } catch (e) {
@@ -232,6 +260,8 @@ class FlutterLeapSdkService {
 
   /// Retry failed download by taskId
   static Future<String?> retryDownload(String taskId) async {
+    await _ensureDownloaderInitialized();
+    
     try {
       return await FlutterDownloader.retry(taskId: taskId);
     } catch (e) {
@@ -241,6 +271,8 @@ class FlutterLeapSdkService {
 
   /// Get download status for a taskId
   static Future<DownloadTaskStatus?> getDownloadStatus(String taskId) async {
+    await _ensureDownloaderInitialized();
+    
     try {
       final tasks = await FlutterDownloader.loadTasks();
       final task = tasks?.firstWhere((t) => t.taskId == taskId, orElse: () => throw Exception('Task not found'));
@@ -252,6 +284,8 @@ class FlutterLeapSdkService {
 
   /// Get download progress for a taskId
   static Future<DownloadProgress?> getDownloadProgress(String taskId) async {
+    await _ensureDownloaderInitialized();
+    
     try {
       final tasks = await FlutterDownloader.loadTasks();
       final task = tasks?.firstWhere((t) => t.taskId == taskId, orElse: () => throw Exception('Task not found'));
@@ -288,6 +322,8 @@ class FlutterLeapSdkService {
 
   /// Get all active download tasks
   static Future<List<DownloadTask>> getActiveDownloads() async {
+    await _ensureDownloaderInitialized();
+    
     try {
       final tasks = await FlutterDownloader.loadTasks();
       return tasks?.where((task) => 

@@ -67,7 +67,7 @@ class _MyHomePageState extends State<MyHomePage> {
       final taskId = await FlutterLeapSdkService.downloadLFM2_350M(
         onProgress: (progress) {
           setState(() {
-            _status = 'Downloading: ${progress.percentage.toStringAsFixed(1)}%';
+            _status = 'Downloading: ${progress.percentage.toStringAsFixed(2)}%';
           });
         },
       );
