@@ -11,34 +11,47 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter LEAP SDK Demo',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: const MyHomePage(title: 'Flutter LEAP SDK Demo'),
+      title: 'LEAP SDK Demo',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+      ),
+      home: const ChatScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  final String title;
+class ChatScreen extends StatefulWidget {
+  const ChatScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   String _response = '';
   bool _isLoading = false;
   bool _isModelLoaded = false;
   String _status = 'No model loaded';
   String? _currentDownloadTaskId;
+  bool _hasText = false;
 
   @override
   void initState() {
     super.initState();
+    _messageController.addListener(() {
+      setState(() {
+        _hasText = _messageController.text.isNotEmpty;
+      });
+    });
     _checkModelStatus();
+  }
+
+  void _clearResponse() {
+    setState(() {
+      _response = '';
+    });
   }
 
   Future<void> _checkModelStatus() async {
@@ -47,42 +60,28 @@ class _MyHomePageState extends State<MyHomePage> {
         _status = 'Checking model status...';
       });
 
-      print('DEBUG: Starting model status check');
       final isLoaded = await FlutterLeapSdkService.checkModelLoaded();
-      print('DEBUG: Model loaded status: $isLoaded');
-
-      // Also check if model file exists
       final modelExists = await FlutterLeapSdkService.checkModelExists(
         'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
       );
-      print('DEBUG: Model file exists: $modelExists');
-
-      // Get list of all downloaded models
-      final downloadedModels =
-          await FlutterLeapSdkService.getDownloadedModels();
-      print('DEBUG: Downloaded models: $downloadedModels');
+      final downloadedModels = await FlutterLeapSdkService.getDownloadedModels();
 
       setState(() {
         _isModelLoaded = isLoaded;
-        String statusText = isLoaded
-            ? 'Model loaded: ${FlutterLeapSdkService.currentLoadedModel}'
-            : 'No model loaded';
-        statusText += '\nModel file exists: $modelExists';
-        statusText += '\nDownloaded models: ${downloadedModels.length}';
-        if (downloadedModels.isNotEmpty) {
-          statusText += '\nFiles: ${downloadedModels.join(', ')}';
+        
+        if (isLoaded) {
+          _status = '✅ Model loaded and ready';
+        } else if (modelExists) {
+          _status = '📁 Model downloaded, click "Load Model" to use';
+        } else if (downloadedModels.isNotEmpty) {
+          _status = '📋 ${downloadedModels.length} model(s) available:\n${downloadedModels.map((f) => '• ${FlutterLeapSdkService.getModelDisplayName(f)}').join('\n')}';
+        } else {
+          _status = '⬇️ No models found. Click "Download Model" to start.';
         }
-        statusText += '\n\n[DEBUG INFO]';
-        statusText += '\nSDK isLoaded: $isLoaded';
-        statusText += '\nFile exists: $modelExists';
-        statusText += '\nDownloaded count: ${downloadedModels.length}';
-        _status = statusText;
       });
-      print('DEBUG: Status updated: $_status');
     } catch (e) {
-      print('DEBUG: Error in _checkModelStatus: $e');
       setState(() {
-        _status = 'Error checking model status: $e';
+        _status = '❌ Error: ${e.toString().split('\n').first}';
       });
     }
   }
@@ -90,26 +89,21 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _downloadModel() async {
     setState(() {
       _isLoading = true;
-      _status = 'Starting download...';
+      _status = '🔄 Starting download...';
     });
 
     try {
-      print('DEBUG: Starting model download');
       final taskId = await FlutterLeapSdkService.downloadModel(
         modelName: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
         onProgress: (progress) {
-          print('DEBUG: Download progress: ${progress.percentage}%');
           setState(() {
             if (progress.percentage >= 100.0) {
-              _status = 'Download completed! Checking file...';
+              _status = '✅ Download completed!';
               _currentDownloadTaskId = null;
-              // Auto-check status after download
-              Future.delayed(const Duration(milliseconds: 500), () {
-                _checkModelStatus();
-              });
+              Future.delayed(const Duration(milliseconds: 500), _checkModelStatus);
             } else {
-              _status =
-                  'Downloading: ${progress.percentage.toStringAsFixed(2)}%';
+              final percent = progress.percentage.toStringAsFixed(1);
+              _status = '📥 Downloading LFM2-350M: $percent%';
             }
           });
         },
@@ -117,17 +111,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
       if (taskId != null) {
         _currentDownloadTaskId = taskId;
-        print('DEBUG: Download task started: $taskId');
-        setState(() {
-          _status = 'Download started (Task: ${taskId.substring(0, 8)}...)';
-        });
-      } else {
-        print('DEBUG: Download task ID is null!');
       }
     } catch (e) {
-      print('DEBUG: Download error: $e');
       setState(() {
-        _status = 'Download failed: $e';
+        _status = '❌ Download failed: ${e.toString().split('\n').first}';
       });
     } finally {
       setState(() {
@@ -141,12 +128,12 @@ class _MyHomePageState extends State<MyHomePage> {
       try {
         await FlutterLeapSdkService.cancelDownload(_currentDownloadTaskId!);
         setState(() {
-          _status = 'Download cancelled';
+          _status = '⏹️ Download cancelled';
           _currentDownloadTaskId = null;
         });
       } catch (e) {
         setState(() {
-          _status = 'Failed to cancel: $e';
+          _status = '❌ Failed to cancel download';
         });
       }
     }
@@ -155,46 +142,35 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _loadModel() async {
     setState(() {
       _isLoading = true;
-      _status = 'Loading model...';
+      _status = '🔄 Loading model...';
     });
 
     try {
-      print(
-        'DEBUG: Attempting to load model: LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
-      );
-
-      // First check if file exists before trying to load
       final modelExists = await FlutterLeapSdkService.checkModelExists(
         'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
       );
-      print('DEBUG: Model file exists before load: $modelExists');
 
       if (!modelExists) {
         setState(() {
-          _status = 'ERROR: Model file not found! Please download first.';
+          _status = '❌ Model not found! Please download first.';
         });
         return;
       }
 
-      final result = await FlutterLeapSdkService.loadModel(
+      await FlutterLeapSdkService.loadModel(
         modelPath: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
       );
-      print('DEBUG: Model load result: $result');
 
-      // Verify the model is actually loaded
       final isLoaded = await FlutterLeapSdkService.checkModelLoaded();
-      print('DEBUG: Model loaded verification: $isLoaded');
-
       setState(() {
         _isModelLoaded = isLoaded;
-        _status =
-            'Model load result: $result\nVerification: Model loaded = $isLoaded';
+        _status = isLoaded 
+          ? '✅ Model loaded successfully!' 
+          : '❌ Model loading failed';
       });
     } catch (e) {
-      print('DEBUG: Model load error: $e');
       setState(() {
-        _status =
-            'Failed to load model: $e\n\nFull error details: ${e.toString()}';
+        _status = '❌ Loading failed: ${e.toString().split('\n').first}';
       });
     } finally {
       setState(() {
@@ -262,139 +238,196 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
+      appBar: AppBar(
+        title: const Text('LEAP SDK Demo'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Status Card
             Card(
+              elevation: 2,
               child: Padding(
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.all(16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Status',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Model Status',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: _checkModelStatus,
+                          icon: const Icon(Icons.refresh),
+                          tooltip: 'Refresh Status',
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(8.0),
+                      padding: const EdgeInsets.all(12.0),
                       decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(4),
+                        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
                         _status,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontFamily: 'monospace',
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        ElevatedButton(
-                          onPressed: _checkModelStatus,
-                          child: const Text('Refresh Status'),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Last updated: ${DateTime.now().toString().substring(11, 19)}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
                     ),
                   ],
                 ),
               ),
             ),
+            // Model Actions
             const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
-                  child: ElevatedButton(
+                  child: ElevatedButton.icon(
                     onPressed: _isLoading ? null : _downloadModel,
-                    child: const Text('Download Model'),
+                    icon: const Icon(Icons.download),
+                    label: const Text('Download'),
                   ),
                 ),
-                const SizedBox(width: 4),
-                if (_currentDownloadTaskId != null)
-                  ElevatedButton(
+                if (_currentDownloadTaskId != null) ...[
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
                     onPressed: _isLoading ? null : _cancelDownload,
+                    icon: const Icon(Icons.stop),
+                    label: const Text('Cancel'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
-                    ),
-                    child: const Text(
-                      'Cancel',
-                      style: TextStyle(color: Colors.white),
+                      foregroundColor: Colors.white,
                     ),
                   ),
-                const SizedBox(width: 4),
+                ],
+                const SizedBox(width: 8),
                 Expanded(
-                  child: ElevatedButton(
+                  child: ElevatedButton.icon(
                     onPressed: _isLoading ? null : _loadModel,
-                    child: const Text('Load Model'),
+                    icon: const Icon(Icons.memory),
+                    label: const Text('Load'),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            // Chat Interface
+            const SizedBox(height: 24),
+            Text(
+              'Chat with Model',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: _messageController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Enter your message',
-                border: OutlineInputBorder(),
+                hintText: 'Ask me anything...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.chat_bubble_outline),
               ),
               maxLines: 3,
+              enabled: _isModelLoaded && !_isLoading,
             ),
             const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
-                  child: ElevatedButton(
-                    onPressed: (_isModelLoaded && !_isLoading)
+                  child: ElevatedButton.icon(
+                    onPressed: (_isModelLoaded && !_isLoading && _hasText)
                         ? _generateResponse
                         : null,
-                    child: const Text('Generate Response'),
+                    icon: const Icon(Icons.send),
+                    label: const Text('Send'),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: ElevatedButton(
-                    onPressed: (_isModelLoaded && !_isLoading)
+                  child: ElevatedButton.icon(
+                    onPressed: (_isModelLoaded && !_isLoading && _hasText)
                         ? _generateStreamingResponse
                         : null,
-                    child: const Text('Stream Response'),
+                    icon: const Icon(Icons.stream),
+                    label: const Text('Stream'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
                   ),
                 ),
               ],
             ),
+            // Response Area
             const SizedBox(height: 16),
             Expanded(
               child: Card(
+                elevation: 2,
                 child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: SingleChildScrollView(
-                    child: Text(
-                      _response.isEmpty
-                          ? 'Response will appear here...'
-                          : _response,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.chat,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Response',
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (_response.isNotEmpty)
+                            IconButton(
+                              onPressed: _clearResponse,
+                              icon: const Icon(Icons.clear),
+                              tooltip: 'Clear response',
+                            ),
+                          if (_isLoading)
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                        ],
+                      ),
+                      const Divider(),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Text(
+                            _response.isEmpty
+                                ? 'Model response will appear here...'
+                                : _response,
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-            if (_isLoading)
-              const Padding(
-                padding: EdgeInsets.all(8.0),
-                child: Center(child: CircularProgressIndicator()),
-              ),
           ],
         ),
       ),
