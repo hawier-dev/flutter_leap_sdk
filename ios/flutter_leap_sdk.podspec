@@ -15,15 +15,15 @@ Pod::Spec.new do |s|
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.platform         = :ios, '14.0'
+  s.platform         = :ios, '15.0'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 
     'DEFINES_MODULE' => 'YES', 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' 
   }
-  s.swift_version = '5.0'
+  s.swift_version = '5.9'
   
-  # LEAP SDK dependency - will need to be updated when iOS LEAP SDK is available
-  # s.dependency 'LeapSDK', '~> 0.1.0'
+  # LEAP SDK dependency
+  s.dependency 'Leap-SDK', '~> 0.4.0'
 end

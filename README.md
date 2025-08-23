@@ -7,7 +7,7 @@ A Flutter plugin for integrating Liquid AI's LEAP SDK, enabling on-device deploy
 | Platform | Status | Notes |
 |----------|--------|--------|
 | Android  | ✅ Supported | API 31+, arm64-v8a |
-| iOS      | 🚧 Partial Support | iOS 14+, SDK placeholder ready |
+| iOS      | ✅ Supported | iOS 15+, 64-bit architecture |
 
 ## Features
 
@@ -23,7 +23,7 @@ A Flutter plugin for integrating Liquid AI's LEAP SDK, enabling on-device deploy
 
 - Flutter SDK
 - **Android**: Device with `arm64-v8a` ABI, minimum API level 31
-- **iOS**: Device with iOS 14+, 64-bit architecture (iPhone 6s and newer)
+- **iOS**: Device with iOS 15+, 64-bit architecture (iPhone 6s and newer)
 - 3GB+ RAM recommended for model execution
 
 ### Installation
@@ -167,16 +167,18 @@ class _ChatScreenState extends State<ChatScreen> {
 
 This package is built on top of Liquid AI's official LEAP SDK. For more information about LEAP SDK and Liquid AI, visit [leap.liquid.ai](https://leap.liquid.ai).
 
-### iOS Status
+### iOS Implementation
 
-The iOS implementation is currently a placeholder architecture waiting for the official iOS LEAP SDK release. The iOS plugin includes:
+The iOS implementation is fully integrated with the official LEAP SDK for iOS:
 
 - ✅ Complete Flutter-iOS bridge implementation
-- ✅ Model downloading support (using flutter_downloader)
-- ✅ Plugin architecture ready for LEAP SDK integration
-- ⏳ Awaiting official iOS LEAP SDK from Liquid AI
+- ✅ Model downloading support (using flutter_downloader) 
+- ✅ Native LEAP SDK integration (version 0.4.0+)
+- ✅ Model loading and text generation
+- ✅ Streaming response support
+- ✅ Full async/await implementation with proper error handling
 
-When the iOS LEAP SDK becomes available, simply uncomment the native iOS implementation in `ios/Classes/FlutterLeapSdkPlugin.swift` and add the SDK dependency to the podspec.
+The iOS plugin uses CocoaPods with the `Leap-SDK` dependency and requires iOS 15+ with Swift 5.9+.
 
 ### Contributing
 
