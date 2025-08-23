@@ -1,7 +1,18 @@
+/// Information about a LEAP SDK model bundle.
+///
+/// Contains metadata for downloadable LFM2 models including file details,
+/// display name, estimated size, and download URL.
 class ModelInfo {
+  /// The actual filename of the model bundle
   final String fileName;
+  
+  /// Human-readable display name for the model
   final String displayName;
+  
+  /// Estimated size of the model (e.g., "322 MB")
   final String size;
+  
+  /// Direct download URL for the model bundle
   final String url;
 
   const ModelInfo({
@@ -35,9 +46,18 @@ class ModelInfo {
   }
 }
 
+/// Represents the progress of a model download operation.
+///
+/// Tracks download progress with bytes downloaded, total bytes, and percentage.
+/// Used in download progress callbacks to provide real-time download status.
 class DownloadProgress {
+  /// Number of bytes successfully downloaded
   final int bytesDownloaded;
+  
+  /// Total size of the download in bytes
   final int totalBytes;
+  
+  /// Percentage of download completed (0.0 to 100.0)
   final double percentage;
 
   const DownloadProgress({
