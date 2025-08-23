@@ -48,7 +48,7 @@ class ModelInfo {
 
 /// Represents the progress of a model download operation.
 ///
-/// Tracks download progress with bytes downloaded, total bytes, and percentage.
+/// Tracks download progress with bytes downloaded, total bytes, percentage, and speed.
 /// Used in download progress callbacks to provide real-time download status.
 class DownloadProgress {
   /// Number of bytes successfully downloaded
@@ -60,16 +60,26 @@ class DownloadProgress {
   /// Percentage of download completed (0.0 to 100.0)
   final double percentage;
 
+  /// Current download speed as a formatted string
+  final String speed;
+
   const DownloadProgress({
     required this.bytesDownloaded,
     required this.totalBytes,
     required this.percentage,
+    this.speed = '',
   });
+
+  /// Alias for bytesDownloaded for backward compatibility
+  int get downloaded => bytesDownloaded;
+  
+  /// Alias for totalBytes for backward compatibility
+  int get total => totalBytes;
 
   bool get isComplete => percentage >= 100.0;
 
   @override
   String toString() {
-    return 'DownloadProgress(bytesDownloaded: $bytesDownloaded, totalBytes: $totalBytes, percentage: ${percentage.toStringAsFixed(1)}%)';
+    return 'DownloadProgress(bytesDownloaded: $bytesDownloaded, totalBytes: $totalBytes, percentage: ${percentage.toStringAsFixed(1)}%, speed: $speed)';
   }
 }
