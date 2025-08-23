@@ -1,4 +1,4 @@
-package com.example.flutter_leap_sdk
+package dev.hawier.flutter_leap_sdk
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodChannel
@@ -113,10 +113,17 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
                 fullResponse += response.text
               }
               is MessageResponse.ReasoningChunk -> {
-                fullResponse += response.text
+                val reasoningString = response.toString()
+                val textPattern = Regex("ReasoningChunk\\(.*text=([\\s\\S]*)\\)", RegexOption.DOT_MATCHES_ALL)
+                val match = textPattern.find(reasoningString)
+                val extractedText = match?.groupValues?.get(1) ?: ""
+                fullResponse += extractedText
               }
               is MessageResponse.Complete -> {
                 Log.d("FlutterLeapSDK", "Generation completed")
+              }
+              else -> {
+                Log.d("FlutterLeapSDK", "Other response type: $response")
               }
             }
           }
@@ -159,9 +166,13 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
                 }
               }
               is MessageResponse.ReasoningChunk -> {
-                if (response.text.isNotEmpty()) {
+                val reasoningString = response.toString()
+                val textPattern = Regex("ReasoningChunk\\(.*text=([\\s\\S]*)\\)", RegexOption.DOT_MATCHES_ALL)
+                val match = textPattern.find(reasoningString)
+                val extractedText = match?.groupValues?.get(1) ?: ""
+                if (extractedText.isNotEmpty()) {
                   launch(Dispatchers.Main) {
-                    streamingSink?.success(response.text)
+                    streamingSink?.success(extractedText)
                   }
                 }
               }
@@ -169,6 +180,9 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
                 launch(Dispatchers.Main) {
                   streamingSink?.success("<STREAM_END>")
                 }
+              }
+              else -> {
+                Log.d("FlutterLeapSDK", "Other response type: $response")
               }
             }
           }
@@ -198,12 +212,14 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
   }
 
   private fun unloadModel(result: Result) {
-    try {
-      modelRunner?.unload()
-      modelRunner = null
-      result.success("Model unloaded successfully")
-    } catch (e: Exception) {
-      result.error("UNLOAD_ERROR", "Failed to unload model: ${e.message}", null)
+    mainScope.launch {
+      try {
+        modelRunner?.unload()
+        modelRunner = null
+        result.success("Model unloaded successfully")
+      } catch (e: Exception) {
+        result.error("UNLOAD_ERROR", "Failed to unload model: ${e.message}", null)
+      }
     }
   }
 

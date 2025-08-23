@@ -27,7 +27,7 @@ flutter:
   plugin:
     platforms:
       android:
-        package: com.example.flutter_leap_sdk
+        package: dev.hawier.flutter_leap_sdk
         pluginClass: FlutterLeapSdkPlugin
 
   # To add assets to your package, add an assets section, like this:
