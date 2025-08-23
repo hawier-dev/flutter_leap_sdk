@@ -69,6 +69,29 @@ class FlutterLeapSdkService {
         fullPath = '${appDir.path}/leap/$fileName';
       }
 
+      print('DEBUG: Loading model:');
+      print('DEBUG: Model path: $fullPath');
+      
+      final modelFile = File(fullPath);
+      final exists = await modelFile.exists();
+      print('DEBUG: File exists: $exists');
+      
+      if (exists) {
+        final fileSize = await modelFile.length();
+        print('DEBUG: File size: ${fileSize} bytes');
+      } else {
+        print('DEBUG: File does not exist! Available files:');
+        final leapDir = Directory('${appDir.path}/leap');
+        if (await leapDir.exists()) {
+          final files = await leapDir.list().toList();
+          for (var file in files) {
+            print('DEBUG: - ${file.path}');
+          }
+        } else {
+          print('DEBUG: Leap directory does not exist!');
+        }
+      }
+
       final String result = await _channel.invokeMethod('loadModel', {
         'modelPath': fullPath,
       });
@@ -77,6 +100,7 @@ class FlutterLeapSdkService {
       return result;
     } on PlatformException catch (e) {
       _isModelLoaded = false;
+      print('DEBUG: Model loading failed: ${e.message} (code: ${e.code})');
       throw ModelLoadingException('Failed to load model: ${e.message}', e.code);
     }
   }
@@ -340,12 +364,26 @@ class FlutterLeapSdkService {
       final tempFile = File('${appDir.path}/leap/$fileName.temp');
       final finalFile = File('${appDir.path}/leap/$fileName');
 
+      print('DEBUG: Finalizing download:');
+      print('DEBUG: Temp file: ${tempFile.path}');
+      print('DEBUG: Final file: ${finalFile.path}');
+      print('DEBUG: Temp file exists: ${await tempFile.exists()}');
+
       if (await tempFile.exists()) {
+        final tempFileSize = await tempFile.length();
+        print('DEBUG: Temp file size: ${tempFileSize} bytes');
+        
         await tempFile.rename(finalFile.path);
+        print('DEBUG: File renamed successfully');
+        
+        final finalFileSize = await finalFile.length();
+        print('DEBUG: Final file size: ${finalFileSize} bytes');
         return true;
       }
+      print('DEBUG: Temp file does not exist!');
       return false;
     } catch (e) {
+      print('DEBUG: Error during finalization: $e');
       throw DownloadException('Failed to finalize download: $e', 'FINALIZE_ERROR');
     }
   }
@@ -370,8 +408,20 @@ class FlutterLeapSdkService {
     try {
       final appDir = await getApplicationDocumentsDirectory();
       final modelFile = File('${appDir.path}/leap/$modelName');
-      return await modelFile.exists();
+      final exists = await modelFile.exists();
+      
+      print('DEBUG: Checking model existence:');
+      print('DEBUG: Model path: ${modelFile.path}');
+      print('DEBUG: File exists: $exists');
+      
+      if (exists) {
+        final fileSize = await modelFile.length();
+        print('DEBUG: File size: ${fileSize} bytes');
+      }
+      
+      return exists;
     } catch (e) {
+      print('DEBUG: Error checking model existence: $e');
       throw FlutterLeapSdkException('Failed to check model existence: $e', 'CHECK_MODEL_ERROR');
     }
   }

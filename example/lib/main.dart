@@ -46,9 +46,22 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _checkModelStatus() async {
     try {
       final isLoaded = await FlutterLeapSdkService.checkModelLoaded();
+      
+      // Also check if model file exists
+      final modelExists = await FlutterLeapSdkService.checkModelExists('LFM2-350M-8da4w_output_8da8w-seq_4096.bundle');
+      
+      // Get list of all downloaded models
+      final downloadedModels = await FlutterLeapSdkService.getDownloadedModels();
+      
       setState(() {
         _isModelLoaded = isLoaded;
-        _status = isLoaded ? 'Model loaded: ${FlutterLeapSdkService.currentLoadedModel}' : 'No model loaded';
+        String statusText = isLoaded ? 'Model loaded: ${FlutterLeapSdkService.currentLoadedModel}' : 'No model loaded';
+        statusText += '\nModel file exists: $modelExists';
+        statusText += '\nDownloaded models: ${downloadedModels.length}';
+        if (downloadedModels.isNotEmpty) {
+          statusText += '\nFiles: ${downloadedModels.join(', ')}';
+        }
+        _status = statusText;
       });
     } catch (e) {
       setState(() {
