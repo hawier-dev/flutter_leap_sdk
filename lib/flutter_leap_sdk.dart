@@ -1,5 +1,5 @@
-/// A Calculator.
-class Calculator {
-  /// Returns [value] plus 1.
-  int addOne(int value) => value + 1;
-}
+library flutter_leap_sdk;
+
+export 'src/flutter_leap_sdk_service.dart';
+export 'src/models.dart';
+export 'src/exceptions.dart';

@@ -1,39 +1,173 @@
-<!--
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# Flutter LEAP SDK
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/tools/pub/writing-package-pages).
-
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/to/develop-packages).
--->
-
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
+A Flutter plugin for integrating Liquid AI's LEAP SDK, enabling on-device deployment of small language models in Flutter applications.
 
 ## Features
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
+- ✅ Model downloading with progress tracking
+- ✅ Model loading and management  
+- ✅ Text generation (blocking and streaming)
+- ✅ Model lifecycle management
+- ✅ Built on official Liquid AI LEAP SDK
 
-## Getting started
+## Getting Started
 
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+### Prerequisites
+
+- Flutter SDK
+- Android device with `arm64-v8a` ABI
+- Minimum Android API level 31
+- 3GB+ RAM recommended for model execution
+
+### Installation
+
+Add this to your `pubspec.yaml`:
+
+```yaml
+dependencies:
+  flutter_leap_sdk: ^0.1.0
+```
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
+### Basic Usage
 
 ```dart
-const like = 'sample';
+import 'package:flutter_leap_sdk/flutter_leap_sdk.dart';
+
+// Download a model
+await FlutterLeapSdkService.downloadModel(
+  modelName: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
+  onProgress: (progress) => print('Download: ${progress.percentage}%'),
+);
+
+// Load the model
+await FlutterLeapSdkService.loadModel(
+  modelPath: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
+);
+
+// Generate response
+String response = await FlutterLeapSdkService.generateResponse('Hello, AI!');
+print(response);
+
+// Or use streaming
+FlutterLeapSdkService.generateResponseStream('Hello, AI!').listen(
+  (chunk) => print('Chunk: $chunk'),
+);
 ```
 
-## Additional information
+### Available Models
 
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
+- **LFM2-350M** (322 MB) - Smallest model, good for basic tasks
+- **LFM2-700M** (610 MB) - Balanced performance and size  
+- **LFM2-1.2B** (924 MB) - Best performance, larger size
+
+### Complete Example
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_leap_sdk/flutter_leap_sdk.dart';
+
+class ChatScreen extends StatefulWidget {
+  @override
+  _ChatScreenState createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  bool isModelLoaded = false;
+  String response = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeModel();
+  }
+
+  Future<void> _initializeModel() async {
+    try {
+      // Check if model exists, download if not
+      bool exists = await FlutterLeapSdkService.checkModelExists(
+        'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle'
+      );
+      
+      if (!exists) {
+        await FlutterLeapSdkService.downloadModel(
+          modelName: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
+          onProgress: (progress) {
+            print('Download progress: ${progress.percentage}%');
+          },
+        );
+      }
+
+      // Load the model
+      await FlutterLeapSdkService.loadModel(
+        modelPath: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
+      );
+      
+      setState(() {
+        isModelLoaded = true;
+      });
+    } catch (e) {
+      print('Error initializing model: $e');
+    }
+  }
+
+  Future<void> _generateResponse(String message) async {
+    if (!isModelLoaded) return;
+    
+    setState(() {
+      response = '';
+    });
+
+    try {
+      // Use streaming for real-time response
+      FlutterLeapSdkService.generateResponseStream(message).listen(
+        (chunk) {
+          setState(() {
+            response += chunk;
+          });
+        },
+      );
+    } catch (e) {
+      print('Error generating response: $e');
+    }
+  }
+}
+```
+
+## API Reference
+
+### FlutterLeapSdkService
+
+#### Model Management
+- `loadModel({String? modelPath})` - Load a model from local storage
+- `unloadModel()` - Unload the currently loaded model
+- `checkModelLoaded()` - Check if a model is currently loaded
+- `checkModelExists(String modelName)` - Check if model file exists locally
+
+#### Text Generation  
+- `generateResponse(String message)` - Generate complete response
+- `generateResponseStream(String message)` - Generate streaming response
+- `cancelStreaming()` - Cancel active streaming generation
+
+#### Model Download & Management
+- `downloadModel({String? modelUrl, String? modelName, Function(DownloadProgress)? onProgress})` - Download model with progress
+- `getDownloadedModels()` - List all downloaded model files
+- `deleteModel(String fileName)` - Delete a downloaded model
+- `getModelInfo(String fileName)` - Get model information
+
+## Additional Information
+
+This package is built on top of Liquid AI's official LEAP SDK for Android. For more information about LEAP SDK and Liquid AI, visit [leap.liquid.ai](https://leap.liquid.ai).
+
+### Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+### Issues
+
+Please file issues on the [GitHub repository](https://github.com/mbadyl/flutter_leap_sdk/issues).
+
+### License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

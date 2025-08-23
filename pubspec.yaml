@@ -1,7 +1,8 @@
 name: flutter_leap_sdk
-description: "A new Flutter package project."
-version: 0.0.1
-homepage:
+description: "Flutter package for Liquid AI's LEAP SDK - Deploy small language models on mobile devices"
+version: 0.1.0
+homepage: https://github.com/mbadyl/flutter_leap_sdk
+repository: https://github.com/mbadyl/flutter_leap_sdk
 
 environment:
   sdk: ^3.8.1
@@ -10,6 +11,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  path_provider: ^2.1.1
+  http: ^1.1.0
 
 dev_dependencies:
   flutter_test:
@@ -21,6 +24,11 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.example.flutter_leap_sdk
+        pluginClass: FlutterLeapSdkPlugin
 
   # To add assets to your package, add an assets section, like this:
   # assets:
