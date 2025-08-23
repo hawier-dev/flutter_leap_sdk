@@ -30,6 +30,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
+  final TextEditingController _systemPromptController = TextEditingController();
   String _response = '';
   bool _isLoading = false;
   bool _isModelLoaded = false;
@@ -228,7 +229,11 @@ class _ChatScreenState extends State<ChatScreen> {
     });
 
     try {
-      final response = await FlutterLeapSdkService.generateResponse(userMessage);
+      final systemPrompt = _systemPromptController.text.trim();
+      final response = await FlutterLeapSdkService.generateResponse(
+        userMessage, 
+        systemPrompt: systemPrompt.isEmpty ? null : systemPrompt,
+      );
       setState(() {
         _response = response;
         _fileOperationStatus = '';
@@ -258,7 +263,11 @@ class _ChatScreenState extends State<ChatScreen> {
       _fileOperationStatus = 'Streaming response...';
     });
 
-    FlutterLeapSdkService.generateResponseStream(userMessage).listen(
+    final systemPrompt = _systemPromptController.text.trim();
+    FlutterLeapSdkService.generateResponseStream(
+      userMessage,
+      systemPrompt: systemPrompt.isEmpty ? null : systemPrompt,
+    ).listen(
       (chunk) {
         setState(() {
           _response += chunk;
@@ -478,6 +487,20 @@ class _ChatScreenState extends State<ChatScreen> {
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _systemPromptController,
+              decoration: InputDecoration(
+                labelText: 'System Prompt (optional)',
+                hintText: 'You are a helpful assistant...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.settings),
+              ),
+              maxLines: 2,
+              enabled: _isModelLoaded && !_isLoading,
             ),
             const SizedBox(height: 12),
             TextField(

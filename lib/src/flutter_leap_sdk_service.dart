@@ -99,11 +99,7 @@ class FlutterLeapSdkService {
       
       LeapLogger.fileOp('check_exists', fullPath, details: 'exists: $exists');
 
-      if (exists) {
-        final size = await file.length();
-        LeapLogger.fileOp('file_info', fullPath, details: '${(size / 1024 / 1024).toStringAsFixed(1)} MB');
-        return fullPath;
-      } else {
+      if (!exists) {
         LeapLogger.warning('Model file does not exist or is empty: $fullPath');
         
         // List available files for debugging
@@ -120,6 +116,9 @@ class FlutterLeapSdkService {
         
         throw ModelLoadingException('Model file not found at: $fullPath', 'MODEL_NOT_FOUND');
       }
+
+      final size = await file.length();
+      LeapLogger.fileOp('file_info', fullPath, details: '${(size / 1024 / 1024).toStringAsFixed(1)} MB');
 
       final String result = await _channel.invokeMethod('loadModel', {
         'modelPath': fullPath,
@@ -194,11 +193,11 @@ class FlutterLeapSdkService {
   }
 
   /// Generate a response using the loaded model
-  static Future<String> generateResponse(String message) async {
-    return await instance._generateResponse(message);
+  static Future<String> generateResponse(String message, {String? systemPrompt}) async {
+    return await instance._generateResponse(message, systemPrompt: systemPrompt);
   }
   
-  Future<String> _generateResponse(String message) async {
+  Future<String> _generateResponse(String message, {String? systemPrompt}) async {
     if (!_isModelLoaded) {
       throw const ModelNotLoadedException();
     }
@@ -217,6 +216,7 @@ class FlutterLeapSdkService {
       
       final String result = await _channel.invokeMethod('generateResponse', {
         'message': message,
+        'systemPrompt': systemPrompt ?? '',
       });
       
       LeapLogger.info('Response generated (${result.length} chars)');
@@ -232,11 +232,11 @@ class FlutterLeapSdkService {
   }
 
   /// Generate a streaming response using the loaded model
-  static Stream<String> generateResponseStream(String message) async* {
-    yield* instance._generateResponseStream(message);
+  static Stream<String> generateResponseStream(String message, {String? systemPrompt}) async* {
+    yield* instance._generateResponseStream(message, systemPrompt: systemPrompt);
   }
   
-  Stream<String> _generateResponseStream(String message) async* {
+  Stream<String> _generateResponseStream(String message, {String? systemPrompt}) async* {
     if (!_isModelLoaded) {
       throw const ModelNotLoadedException();
     }
@@ -255,6 +255,7 @@ class FlutterLeapSdkService {
       
       await _channel.invokeMethod('generateResponseStream', {
         'message': message,
+        'systemPrompt': systemPrompt ?? '',
       });
 
       await for (final data in _streamChannel.receiveBroadcastStream()) {

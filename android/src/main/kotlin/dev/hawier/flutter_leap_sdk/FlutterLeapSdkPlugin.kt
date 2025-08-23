@@ -51,11 +51,13 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       }
       "generateResponse" -> {
         val message = call.argument<String>("message") ?: ""
-        generateResponse(message, result)
+        val systemPrompt = call.argument<String>("systemPrompt") ?: ""
+        generateResponse(message, systemPrompt, result)
       }
       "generateResponseStream" -> {
         val message = call.argument<String>("message") ?: ""
-        startStreamingResponse(message, result)
+        val systemPrompt = call.argument<String>("systemPrompt") ?: ""
+        startStreamingResponse(message, systemPrompt, result)
       }
       "cancelStreaming" -> {
         cancelStreaming(result)
@@ -178,7 +180,7 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     val errorMessage: String = ""
   )
 
-  private fun generateResponse(message: String, result: Result) {
+  private fun generateResponse(message: String, systemPrompt: String, result: Result) {
     val runner = modelRunner
     if (runner == null) {
       result.error("MODEL_NOT_LOADED", "Model is not loaded", null)
@@ -198,7 +200,7 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     
     mainScope.launch(Dispatchers.IO) {
       try {
-        val conversation = runner.createConversation()
+        val conversation = runner.createConversation(systemPrompt)
         var fullResponse = ""
         
         Log.d("FlutterLeapSDK", "Generating response (${message.length} chars)")
@@ -242,7 +244,7 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     }
   }
 
-  private fun startStreamingResponse(message: String, result: Result) {
+  private fun startStreamingResponse(message: String, systemPrompt: String, result: Result) {
     val runner = modelRunner
     if (runner == null) {
       result.error("MODEL_NOT_LOADED", "Model is not loaded", null)
@@ -271,7 +273,7 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         
         Log.d("FlutterLeapSDK", "Starting stream (${message.length} chars)")
         
-        val conversation = runner.createConversation()
+        val conversation = runner.createConversation(systemPrompt)
         
         conversation.generateResponse(message)
           .onEach { response ->

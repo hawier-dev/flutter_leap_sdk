@@ -209,6 +209,8 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             return
         }
         
+        let systemPrompt = args["systemPrompt"] as? String ?? ""
+        
         // Validate input
         let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedMessage.isEmpty else {
@@ -225,17 +227,21 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         
         Task {
             do {
-                let conversation = runner.createConversation()
+                let conversation = runner.createConversation(systemPrompt: systemPrompt)
                 var fullResponse = ""
                 
-                for try await messageResponse in conversation.generateResponse(message: message) {
+                let chatMessage = ChatMessage(role: .user, content: [.text(message)])
+                for try await messageResponse in conversation.generateResponse(message: chatMessage) {
                     switch messageResponse {
                     case .chunk(let text):
                         fullResponse += text
                     case .reasoningChunk(let text):
                         fullResponse += text
-                    case .complete:
+                    case .complete(let finalText, let info):
                         print("Flutter LEAP SDK iOS: Generation completed (\(fullResponse.count) chars)")
+                        break
+                    @unknown default:
+                        // Handle any future cases
                         break
                     }
                 }
@@ -267,6 +273,8 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             return
         }
         
+        let systemPrompt = args["systemPrompt"] as? String ?? ""
+        
         // Validate input
         let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedMessage.isEmpty else {
@@ -288,9 +296,10 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             do {
                 result("Streaming started")
                 
-                let conversation = runner.createConversation()
+                let conversation = runner.createConversation(systemPrompt: systemPrompt)
                 
-                for try await messageResponse in conversation.generateResponse(message: message) {
+                let chatMessage = ChatMessage(role: .user, content: [.text(message)])
+                for try await messageResponse in conversation.generateResponse(message: chatMessage) {
                     // Check if task was cancelled
                     if Task.isCancelled { break }
                     
@@ -307,11 +316,14 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                                 self.eventSink?(text)
                             }
                         }
-                    case .complete:
+                    case .complete(let finalText, let info):
                         DispatchQueue.main.async {
                             self.eventSink?("<STREAM_END>")
                         }
                         print("Flutter LEAP SDK iOS: Streaming completed")
+                        break
+                    @unknown default:
+                        // Handle any future cases
                         break
                     }
                 }
