@@ -579,35 +579,6 @@ class FlutterLeapSdkService {
     return availableModels[fileName];
   }
 
-  /// Download LFM2-350M model
-  static Future<String?> downloadLFM2_350M({
-    Function(DownloadProgress)? onProgress,
-  }) async {
-    return downloadModel(
-      modelName: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
-      onProgress: onProgress,
-    );
-  }
-
-  /// Download LFM2-700M model
-  static Future<String?> downloadLFM2_700M({
-    Function(DownloadProgress)? onProgress,
-  }) async {
-    return downloadModel(
-      modelName: 'LFM2-700M-8da4w_output_8da8w-seq_4096.bundle',
-      onProgress: onProgress,
-    );
-  }
-
-  /// Download LFM2-1.2B model
-  static Future<String?> downloadLFM2_1_2B({
-    Function(DownloadProgress)? onProgress,
-  }) async {
-    return downloadModel(
-      modelName: 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle',
-      onProgress: onProgress,
-    );
-  }
 
   /// Delete a downloaded model file
   static Future<bool> deleteModel(String fileName) async {

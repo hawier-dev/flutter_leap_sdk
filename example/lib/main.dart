@@ -95,7 +95,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
     try {
       print('DEBUG: Starting model download');
-      final taskId = await FlutterLeapSdkService.downloadLFM2_350M(
+      final taskId = await FlutterLeapSdkService.downloadModel(
+        modelName: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
         onProgress: (progress) {
           print('DEBUG: Download progress: ${progress.percentage}%');
           setState(() {
