@@ -55,90 +55,146 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             return
         }
         
-        print("Flutter LEAP SDK iOS: === MODEL LOADING DEBUG ===")
-        print("Flutter LEAP SDK iOS: Requested model path: \(modelPath)")
-        
-        // Check if file exists
-        let fileManager = FileManager.default
-        let fileExists = fileManager.fileExists(atPath: modelPath)
-        print("Flutter LEAP SDK iOS: File exists: \(fileExists)")
-        
-        guard fileExists else {
-            result(FlutterError(code: "MODEL_NOT_FOUND", message: "Model file not found at: \(modelPath)", details: nil))
+        // Validate input
+        guard !modelPath.isEmpty else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "Model path cannot be empty", details: nil))
             return
         }
         
-        // Get file info for debugging
-        do {
-            let fileAttributes = try fileManager.attributesOfItem(atPath: modelPath)
-            let fileSize = fileAttributes[.size] as? Int64 ?? 0
-            print("Flutter LEAP SDK iOS: File size: \(fileSize) bytes")
-            print("Flutter LEAP SDK iOS: File can read: \(fileManager.isReadableFile(atPath: modelPath))")
-        } catch {
-            print("Flutter LEAP SDK iOS: Could not get file attributes: \(error)")
-        }
+        // Secure logging - only log filename
+        let fileName = URL(fileURLWithPath: modelPath).lastPathComponent
+        print("Flutter LEAP SDK iOS: Loading model: \(fileName)")
         
-        // List parent directory contents for debugging
-        let parentPath = (modelPath as NSString).deletingLastPathComponent
-        do {
-            let contents = try fileManager.contentsOfDirectory(atPath: parentPath)
-            print("Flutter LEAP SDK iOS: Parent directory contents:")
-            for item in contents {
-                let itemPath = (parentPath as NSString).appendingPathComponent(item)
-                let attrs = try? fileManager.attributesOfItem(atPath: itemPath)
-                let size = attrs?[.size] as? Int64 ?? 0
-                print("Flutter LEAP SDK iOS: - \(item) (\(size) bytes)")
-            }
-        } catch {
-            print("Flutter LEAP SDK iOS: Could not list parent directory: \(error)")
-        }
-        
-        print("Flutter LEAP SDK iOS: Calling Leap.load...")
-        
-        // Unload existing model first
-        modelRunner = nil
-        isModelLoaded = false
-        
-        Task {
-            do {
-                let modelURL = URL(fileURLWithPath: modelPath)
-                print("Flutter LEAP SDK iOS: Loading from URL: \(modelURL)")
-                
-                modelRunner = try await Leap.load(url: modelURL)
-                isModelLoaded = true
-                currentModelPath = modelPath
-                
-                print("Flutter LEAP SDK iOS: Model loaded successfully!")
-                
+        // Perform file validation on background queue
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            let validationResult = self.validateModelFile(at: modelPath)
+            
+            guard validationResult.isValid else {
                 DispatchQueue.main.async {
-                    result("Model loaded successfully from \(modelPath)")
-                }
-            } catch {
-                print("Flutter LEAP SDK iOS: Failed to load model: \(error)")
-                print("Flutter LEAP SDK iOS: Error type: \(type(of: error))")
-                print("Flutter LEAP SDK iOS: Error description: \(error.localizedDescription)")
-                
-                DispatchQueue.main.async {
-                    let errorMessage = self.formatLeapError(error)
-                    result(FlutterError(code: "MODEL_LOADING_ERROR", 
-                                      message: errorMessage, 
+                    result(FlutterError(code: validationResult.errorCode, 
+                                      message: validationResult.errorMessage, 
                                       details: nil))
+                }
+                return
+            }
+            
+            // Log file info securely
+            if let fileSize = validationResult.fileSize {
+                print("Flutter LEAP SDK iOS: File size: \(self.formatFileSize(fileSize))")
+            }
+            
+            // Unload existing model first
+            self.modelRunner = nil
+            self.isModelLoaded = false
+            
+            // Load model on background task
+            Task {
+                do {
+                    let modelURL = URL(fileURLWithPath: modelPath)
+                    
+                    self.modelRunner = try await Leap.load(url: modelURL)
+                    self.isModelLoaded = true
+                    self.currentModelPath = modelPath
+                    
+                    print("Flutter LEAP SDK iOS: Model loaded successfully")
+                    
+                    DispatchQueue.main.async {
+                        result("Model loaded successfully")
+                    }
+                } catch {
+                    print("Flutter LEAP SDK iOS: Model loading failed: \(type(of: error))")
+                    print("Flutter LEAP SDK iOS: Error: \(error.localizedDescription)")
+                    
+                    DispatchQueue.main.async {
+                        let errorMessage = self.formatLeapError(error)
+                        result(FlutterError(code: "MODEL_LOADING_ERROR", 
+                                          message: errorMessage, 
+                                          details: nil))
+                    }
                 }
             }
         }
     }
     
-    private func formatLeapError(_ error: Error) -> String {
-        let baseMessage = "Failed to load model: \(error.localizedDescription)"
+    private struct FileValidationResult {
+        let isValid: Bool
+        let errorCode: String
+        let errorMessage: String
+        let fileSize: Int64?
+    }
+    
+    private func validateModelFile(at path: String) -> FileValidationResult {
+        let fileManager = FileManager.default
         
-        // Add specific guidance based on error type
-        if error.localizedDescription.contains("34") {
-            return "\(baseMessage) - This may be due to incompatible model format, device architecture, or corrupted model file."
-        } else if error.localizedDescription.contains("load error") {
-            return "\(baseMessage) - Check if the model is compatible with LEAP SDK version 0.4.0+"
+        guard fileManager.fileExists(atPath: path) else {
+            return FileValidationResult(
+                isValid: false,
+                errorCode: "MODEL_NOT_FOUND",
+                errorMessage: "Model file not found",
+                fileSize: nil
+            )
         }
         
-        return baseMessage
+        guard fileManager.isReadableFile(atPath: path) else {
+            return FileValidationResult(
+                isValid: false,
+                errorCode: "MODEL_NOT_READABLE",
+                errorMessage: "Cannot read model file (check permissions)",
+                fileSize: nil
+            )
+        }
+        
+        // Get file size
+        do {
+            let attributes = try fileManager.attributesOfItem(atPath: path)
+            let fileSize = attributes[.size] as? Int64 ?? 0
+            
+            guard fileSize > 0 else {
+                return FileValidationResult(
+                    isValid: false,
+                    errorCode: "MODEL_EMPTY",
+                    errorMessage: "Model file is empty",
+                    fileSize: fileSize
+                )
+            }
+            
+            return FileValidationResult(
+                isValid: true,
+                errorCode: "",
+                errorMessage: "",
+                fileSize: fileSize
+            )
+        } catch {
+            return FileValidationResult(
+                isValid: false,
+                errorCode: "MODEL_ACCESS_ERROR",
+                errorMessage: "Cannot access model file: \(error.localizedDescription)",
+                fileSize: nil
+            )
+        }
+    }
+    
+    private func formatFileSize(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+    
+    private func formatLeapError(_ error: Error) -> String {
+        let errorDesc = error.localizedDescription
+        
+        // Provide specific guidance based on error type
+        if errorDesc.contains("34") {
+            return "Model loading failed (Error 34): Incompatible model format or device architecture. Ensure device supports 64-bit architecture and model is compatible with LEAP SDK."
+        } else if errorDesc.contains("load error") {
+            return "Model loading error: Check model compatibility with LEAP SDK version 0.4.0+"
+        } else if errorDesc.contains("memory") || errorDesc.contains("Memory") {
+            return "Model loading failed: Insufficient memory. Try closing other apps or use a smaller model."
+        }
+        
+        return "Model loading failed: \(errorDesc)"
     }
     
     private func generateResponse(call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -153,7 +209,19 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             return
         }
         
-        print("Flutter LEAP SDK iOS: Generating response for: \(message)")
+        // Validate input
+        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedMessage.isEmpty else {
+            result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
+            return
+        }
+        
+        guard message.count <= 4096 else {
+            result(FlutterError(code: "INPUT_TOO_LONG", message: "Message too long (max 4096 characters)", details: nil))
+            return
+        }
+        
+        print("Flutter LEAP SDK iOS: Generating response (\(message.count) chars)")
         
         Task {
             do {
@@ -167,7 +235,7 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                     case .reasoningChunk(let text):
                         fullResponse += text
                     case .complete:
-                        print("Flutter LEAP SDK iOS: Generation completed")
+                        print("Flutter LEAP SDK iOS: Generation completed (\(fullResponse.count) chars)")
                         break
                     }
                 }
@@ -176,7 +244,8 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                     result(fullResponse)
                 }
             } catch {
-                print("Flutter LEAP SDK iOS: Error generating response: \(error)")
+                print("Flutter LEAP SDK iOS: Error generating response: \(type(of: error))")
+                print("Flutter LEAP SDK iOS: Error details: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     result(FlutterError(code: "GENERATION_ERROR", 
                                       message: "Error generating response: \(error.localizedDescription)", 
@@ -198,7 +267,19 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             return
         }
         
-        print("Flutter LEAP SDK iOS: Starting streaming response for: \(message)")
+        // Validate input
+        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedMessage.isEmpty else {
+            result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
+            return
+        }
+        
+        guard message.count <= 4096 else {
+            result(FlutterError(code: "INPUT_TOO_LONG", message: "Message too long (max 4096 characters)", details: nil))
+            return
+        }
+        
+        print("Flutter LEAP SDK iOS: Starting streaming response (\(message.count) chars)")
         
         // Cancel any existing streaming task
         activeStreamingTask?.cancel()
@@ -230,6 +311,7 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                         DispatchQueue.main.async {
                             self.eventSink?("<STREAM_END>")
                         }
+                        print("Flutter LEAP SDK iOS: Streaming completed")
                         break
                     }
                 }
@@ -238,7 +320,8 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                 if error is CancellationError {
                     print("Flutter LEAP SDK iOS: Streaming was cancelled")
                 } else {
-                    print("Flutter LEAP SDK iOS: Error in streaming response: \(error)")
+                    print("Flutter LEAP SDK iOS: Error in streaming: \(type(of: error))")
+                    print("Flutter LEAP SDK iOS: Streaming error details: \(error.localizedDescription)")
                     DispatchQueue.main.async {
                         self.eventSink?(FlutterError(code: "STREAMING_ERROR", 
                                                    message: "Error generating streaming response: \(error.localizedDescription)", 
@@ -259,16 +342,23 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
     private func unloadModel(result: @escaping FlutterResult) {
         print("Flutter LEAP SDK iOS: Unloading model")
         
-        // Cancel any active streaming
-        activeStreamingTask?.cancel()
-        activeStreamingTask = nil
-        
-        // Unload model
-        modelRunner = nil
-        isModelLoaded = false
-        currentModelPath = nil
-        
-        result("Model unloaded successfully")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Cancel any active streaming
+            self.activeStreamingTask?.cancel()
+            self.activeStreamingTask = nil
+            
+            // Unload model on background thread
+            self.modelRunner = nil
+            self.isModelLoaded = false
+            self.currentModelPath = nil
+            
+            DispatchQueue.main.async {
+                print("Flutter LEAP SDK iOS: Model unloaded successfully")
+                result("Model unloaded successfully")
+            }
+        }
     }
 }
 

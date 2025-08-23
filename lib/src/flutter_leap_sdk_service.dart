@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
+import 'package:path_provider/path_provider.dart';
 import 'models.dart';
 import 'exceptions.dart';
+import 'download_manager.dart';
+import 'background_file_ops.dart';
+import 'file_cache.dart';
+import 'leap_logger.dart';
 
 class FlutterLeapSdkService {
   static const MethodChannel _channel = MethodChannel('flutter_leap_sdk');
@@ -12,9 +16,26 @@ class FlutterLeapSdkService {
     'flutter_leap_sdk_streaming',
   );
 
-  static bool _isModelLoaded = false;
-  static String _currentLoadedModel = '';
-  static bool _isDownloaderInitialized = false;
+  // State management - replaced static with instance-based
+  bool _isModelLoaded = false;
+  String _currentLoadedModel = '';
+  
+  // Singleton instance
+  static FlutterLeapSdkService? _instance;
+  static FlutterLeapSdkService get instance {
+    _instance ??= FlutterLeapSdkService._internal();
+    return _instance!;
+  }
+  
+  FlutterLeapSdkService._internal() {
+    // Initialize logging
+    LeapLogger.initialize();
+    
+    // Initialize download manager
+    DownloadManager.initialize();
+    
+    LeapLogger.info('FlutterLeapSdkService initialized');
+  }
 
   // Available LEAP models from Liquid AI
   static const Map<String, ModelInfo> availableModels = {
@@ -41,26 +62,30 @@ class FlutterLeapSdkService {
     ),
   };
 
-  static String get currentLoadedModel => _currentLoadedModel;
-  static bool get isModelLoaded => _isModelLoaded;
+  String get currentLoadedModel => _currentLoadedModel;
+  bool get isModelLoaded => _isModelLoaded;
+  
+  // Static getters for backward compatibility
+  static String get currentLoadedModel => instance._currentLoadedModel;
+  static bool get isModelLoaded => instance._isModelLoaded;
 
-  /// Initialize flutter_downloader
+  /// Initialize the service (now handled automatically)
   static Future<void> initialize() async {
-    if (!_isDownloaderInitialized) {
-      await FlutterDownloader.initialize(debug: false, ignoreSsl: false);
-      _isDownloaderInitialized = true;
-    }
+    // Initialization is now handled in constructor
+    await instance._ensureInitialized();
   }
-
-  /// Ensure downloader is initialized before any download operation
-  static Future<void> _ensureDownloaderInitialized() async {
-    if (!_isDownloaderInitialized) {
-      await initialize();
-    }
+  
+  Future<void> _ensureInitialized() async {
+    // Download manager initialization is handled automatically
+    LeapLogger.info('Service initialization complete');
   }
 
   /// Load a model from the specified path
   static Future<String> loadModel({String? modelPath}) async {
+    return await instance._loadModel(modelPath: modelPath);
+  }
+  
+  Future<String> _loadModel({String? modelPath}) async {
     try {
       String fullPath;
       if (modelPath != null && modelPath.startsWith('/')) {
@@ -71,51 +96,74 @@ class FlutterLeapSdkService {
         fullPath = '${appDir.path}/leap/$fileName';
       }
 
-      print('DEBUG: Loading model:');
-      print('DEBUG: Model path: $fullPath');
+      LeapLogger.modelOp('Loading model', details: 'path: $fullPath');
 
-      final modelFile = File(fullPath);
-      final exists = await modelFile.exists();
-      print('DEBUG: File exists: $exists');
+      // Use cached file operations instead of direct I/O
+      final fileInfo = await FileCache.getFileInfo(fullPath);
+      
+      LeapLogger.fileOp('check_exists', fullPath, details: 'exists: ${fileInfo.exists}');
 
-      if (exists) {
-        final fileSize = await modelFile.length();
-        print('DEBUG: File size: ${fileSize} bytes');
+      if (fileInfo.exists && fileInfo.size > 0) {
+        LeapLogger.fileOp('file_info', fullPath, details: fileInfo.sizeFormatted);
       } else {
-        print('DEBUG: File does not exist! Available files:');
+        LeapLogger.warning('Model file does not exist or is empty: $fullPath');
+        
+        // List available files for debugging
         final appDir = await getApplicationDocumentsDirectory();
-        final leapDir = Directory('${appDir.path}/leap');
-        if (await leapDir.exists()) {
-          final files = await leapDir.list().toList();
-          for (var file in files) {
-            print('DEBUG: - ${file.path}');
-          }
+        final availableFiles = await BackgroundFileOps.listModelFiles('${appDir.path}/leap');
+        
+        if (availableFiles.isNotEmpty) {
+          LeapLogger.info('Available models: ${availableFiles.join(', ')}');
         } else {
-          print('DEBUG: Leap directory does not exist!');
+          LeapLogger.warning('No model files found in leap directory');
         }
+        
+        throw ModelLoadingException('Model file not found at: $fullPath', 'MODEL_NOT_FOUND');
       }
 
       final String result = await _channel.invokeMethod('loadModel', {
         'modelPath': fullPath,
       });
+      
       _isModelLoaded = true;
       _currentLoadedModel = fullPath.split('/').last;
+      
+      LeapLogger.modelOp('Model loaded successfully', modelName: _currentLoadedModel);
       return result;
+      
     } on PlatformException catch (e) {
       _isModelLoaded = false;
-      print('DEBUG: Model loading failed: ${e.message} (code: ${e.code})');
+      _currentLoadedModel = '';
+      
+      LeapLogger.error('Model loading failed', e);
       throw ModelLoadingException('Failed to load model: ${e.message}', e.code);
+    } catch (e) {
+      _isModelLoaded = false;
+      _currentLoadedModel = '';
+      
+      LeapLogger.error('Unexpected error during model loading', e);
+      rethrow;
     }
   }
 
   /// Unload the currently loaded model
   static Future<String> unloadModel() async {
+    return await instance._unloadModel();
+  }
+  
+  Future<String> _unloadModel() async {
     try {
       final String result = await _channel.invokeMethod('unloadModel');
+      
+      final previousModel = _currentLoadedModel;
       _isModelLoaded = false;
       _currentLoadedModel = '';
+      
+      LeapLogger.modelOp('Model unloaded successfully', modelName: previousModel);
       return result;
+      
     } on PlatformException catch (e) {
+      LeapLogger.error('Failed to unload model', e);
       throw FlutterLeapSdkException(
         'Failed to unload model: ${e.message}',
         e.code,
@@ -125,11 +173,19 @@ class FlutterLeapSdkService {
 
   /// Check if a model is currently loaded
   static Future<bool> checkModelLoaded() async {
+    return await instance._checkModelLoaded();
+  }
+  
+  Future<bool> _checkModelLoaded() async {
     try {
       final bool result = await _channel.invokeMethod('isModelLoaded');
       _isModelLoaded = result;
+      
+      LeapLogger.debug('Model loaded status: $result');
       return result;
+      
     } on PlatformException catch (e) {
+      LeapLogger.error('Failed to check model status', e);
       throw FlutterLeapSdkException(
         'Failed to check model status: ${e.message}',
         e.code,
@@ -139,16 +195,35 @@ class FlutterLeapSdkService {
 
   /// Generate a response using the loaded model
   static Future<String> generateResponse(String message) async {
+    return await instance._generateResponse(message);
+  }
+  
+  Future<String> _generateResponse(String message) async {
     if (!_isModelLoaded) {
       throw const ModelNotLoadedException();
     }
+    
+    // Basic input validation
+    if (message.trim().isEmpty) {
+      throw GenerationException('Message cannot be empty', 'INVALID_INPUT');
+    }
+    
+    if (message.length > 4096) {
+      throw GenerationException('Message too long (max 4096 characters)', 'INPUT_TOO_LONG');
+    }
 
     try {
+      LeapLogger.info('Generating response (${message.length} chars)');
+      
       final String result = await _channel.invokeMethod('generateResponse', {
         'message': message,
       });
+      
+      LeapLogger.info('Response generated (${result.length} chars)');
       return result;
+      
     } on PlatformException catch (e) {
+      LeapLogger.error('Failed to generate response', e);
       throw GenerationException(
         'Failed to generate response: ${e.message}',
         e.code,
@@ -158,11 +233,26 @@ class FlutterLeapSdkService {
 
   /// Generate a streaming response using the loaded model
   static Stream<String> generateResponseStream(String message) async* {
+    yield* instance._generateResponseStream(message);
+  }
+  
+  Stream<String> _generateResponseStream(String message) async* {
     if (!_isModelLoaded) {
       throw const ModelNotLoadedException();
     }
+    
+    // Basic input validation
+    if (message.trim().isEmpty) {
+      throw GenerationException('Message cannot be empty', 'INVALID_INPUT');
+    }
+    
+    if (message.length > 4096) {
+      throw GenerationException('Message too long (max 4096 characters)', 'INPUT_TOO_LONG');
+    }
 
     try {
+      LeapLogger.info('Starting streaming response (${message.length} chars)');
+      
       await _channel.invokeMethod('generateResponseStream', {
         'message': message,
       });
@@ -170,13 +260,16 @@ class FlutterLeapSdkService {
       await for (final data in _streamChannel.receiveBroadcastStream()) {
         if (data is String) {
           if (data == '<STREAM_END>') {
+            LeapLogger.info('Streaming response completed');
             break;
           } else {
             yield data;
           }
         }
       }
+      
     } on PlatformException catch (e) {
+      LeapLogger.error('Failed to generate streaming response', e);
       throw GenerationException(
         'Failed to generate streaming response: ${e.message}',
         e.code,
@@ -188,7 +281,9 @@ class FlutterLeapSdkService {
   static Future<void> cancelStreaming() async {
     try {
       await _channel.invokeMethod('cancelStreaming');
+      LeapLogger.info('Streaming cancelled');
     } on PlatformException catch (e) {
+      LeapLogger.error('Failed to cancel streaming', e);
       throw FlutterLeapSdkException(
         'Failed to cancel streaming: ${e.message}',
         e.code,
@@ -196,168 +291,35 @@ class FlutterLeapSdkService {
     }
   }
 
-  /// Download a model using flutter_downloader
+  /// Download a model using optimized download manager
   static Future<String?> downloadModel({
     String? modelUrl,
     String? modelName,
     Function(DownloadProgress)? onProgress,
   }) async {
-    await _ensureDownloaderInitialized();
-
-    try {
-      final fileName =
-          modelName ?? 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle';
-      final tempFileName = '$fileName.temp';
-      final url =
-          modelUrl ??
-          availableModels[fileName]?.url ??
-          'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle?download=true';
-
-      final appDir = await getApplicationDocumentsDirectory();
-      final leapDir = Directory('${appDir.path}/leap');
-
-      if (!await leapDir.exists()) {
-        await leapDir.create(recursive: true);
-      }
-
-      // Start download and return taskId
-      final taskId = await FlutterDownloader.enqueue(
-        url: url,
-        fileName: tempFileName,
-        savedDir: leapDir.path,
-        showNotification: false,
-        openFileFromNotification: false,
-      );
-
-      // Set up progress monitoring if callback provided
-      if (onProgress != null && taskId != null) {
-        _monitorDownloadProgress(taskId, onProgress);
-      }
-
-      return taskId;
-    } catch (e) {
-      throw DownloadException('Failed to start download: $e', 'DOWNLOAD_ERROR');
-    }
+    return await DownloadManager.downloadModel(
+      modelUrl: modelUrl,
+      modelName: modelName,
+      onProgress: onProgress,
+    );
   }
 
-  /// Monitor download progress for a specific task
-  static void _monitorDownloadProgress(
-    String taskId,
-    Function(DownloadProgress) onProgress,
-  ) {
-    Timer.periodic(const Duration(milliseconds: 250), (timer) async {
-      try {
-        await _ensureDownloaderInitialized();
-        final tasks = await FlutterDownloader.loadTasks();
-
-        if (tasks == null || tasks.isEmpty) {
-          print('DEBUG: No tasks found, cancelling timer');
-          timer.cancel();
-          return;
-        }
-
-        DownloadTask? task;
-        try {
-          task = tasks.firstWhere((t) => t.taskId == taskId);
-        } catch (e) {
-          task = null;
-        }
-
-        if (task == null) {
-          print('DEBUG: Task $taskId not found, cancelling timer');
-          timer.cancel();
-          return;
-        }
-
-        print('DEBUG: Task status: ${task.status}, progress: ${task.progress}');
-
-        final progress = DownloadProgress(
-          bytesDownloaded: task.progress,
-          totalBytes: 100,
-          percentage: task.progress.toDouble(),
-        );
-
-        onProgress(progress);
-
-        // Handle completion - finalize the download
-        if (task.status == DownloadTaskStatus.complete) {
-          timer.cancel();
-          print('DEBUG: Download completed, starting finalization');
-          try {
-            // Notify that finalization is starting
-            final finalizingProgress = DownloadProgress(
-              bytesDownloaded: 100,
-              totalBytes: 100,
-              percentage: 100.0,
-            );
-            onProgress(finalizingProgress);
-
-            // Extract original filename from temp filename
-            final tempFileName = task.filename;
-            print('DEBUG: Temp filename: $tempFileName');
-            if (tempFileName != null && tempFileName.endsWith('.temp')) {
-              final originalFileName = tempFileName.replaceAll('.temp', '');
-              print('DEBUG: Finalizing to: $originalFileName');
-              final success = await finalizeDownload(originalFileName);
-              print('DEBUG: Finalization result: $success');
-
-              // Send final completion progress
-              final completionProgress = DownloadProgress(
-                bytesDownloaded: 100,
-                totalBytes: 100,
-                percentage: 100.0,
-              );
-              onProgress(completionProgress);
-            }
-          } catch (e) {
-            // Even if finalization fails, at least notify completion
-            print('DEBUG: Failed to finalize download: $e');
-          }
-        }
-        // Stop monitoring when failed or canceled
-        else if (task.status == DownloadTaskStatus.failed ||
-            task.status == DownloadTaskStatus.canceled) {
-          print('DEBUG: Task failed or cancelled: ${task.status}');
-          timer.cancel();
-        }
-      } catch (e) {
-        print('DEBUG: Error in progress monitoring: $e');
-        timer.cancel();
-      }
-    });
-  }
+  // Removed inefficient polling-based progress monitoring
+  // Now handled by event-driven DownloadManager
 
   /// Cancel download by taskId
   static Future<void> cancelDownload(String taskId) async {
-    await _ensureDownloaderInitialized();
-
-    try {
-      await FlutterDownloader.cancel(taskId: taskId);
-    } catch (e) {
-      throw DownloadException('Failed to cancel download: $e', 'CANCEL_ERROR');
-    }
+    return await DownloadManager.cancelDownload(taskId);
   }
 
   /// Pause download by taskId
   static Future<void> pauseDownload(String taskId) async {
-    await _ensureDownloaderInitialized();
-
-    try {
-      await FlutterDownloader.pause(taskId: taskId);
-    } catch (e) {
-      throw DownloadException('Failed to pause download: $e', 'PAUSE_ERROR');
-    }
+    return await DownloadManager.pauseDownload(taskId);
   }
 
   /// Resume download by taskId
   static Future<String?> resumeDownload(String taskId) async {
-    await _ensureDownloaderInitialized();
-
-    try {
-      return await FlutterDownloader.resume(taskId: taskId);
-    } catch (e) {
-      throw DownloadException('Failed to resume download: $e', 'RESUME_ERROR');
-    }
+    return await DownloadManager.resumeDownload(taskId);
   }
 
   /// Retry failed download by taskId
@@ -371,167 +333,45 @@ class FlutterLeapSdkService {
     }
   }
 
-  /// Get download status for a taskId
+  /// Get download status for a taskId (deprecated - use DownloadManager directly)
+  @deprecated
   static Future<DownloadTaskStatus?> getDownloadStatus(String taskId) async {
-    await _ensureDownloaderInitialized();
-
-    try {
-      final tasks = await FlutterDownloader.loadTasks();
-      if (tasks == null) return null;
-
-      DownloadTask? task;
-      try {
-        task = tasks.firstWhere((t) => t.taskId == taskId);
-      } catch (e) {
-        return null;
-      }
-
-      return task.status;
-    } catch (e) {
-      return null;
-    }
+    // This method is deprecated - use DownloadManager.getDownloadProgress instead
+    final progress = await DownloadManager.getDownloadProgress(taskId);
+    return progress != null ? DownloadTaskStatus.running : null;
   }
 
   /// Get download progress for a taskId
   static Future<DownloadProgress?> getDownloadProgress(String taskId) async {
-    await _ensureDownloaderInitialized();
-
-    try {
-      final tasks = await FlutterDownloader.loadTasks();
-      if (tasks == null) return null;
-
-      DownloadTask? task;
-      try {
-        task = tasks.firstWhere((t) => t.taskId == taskId);
-      } catch (e) {
-        return null;
-      }
-
-      return DownloadProgress(
-        bytesDownloaded: task.progress,
-        totalBytes: 100,
-        percentage: task.progress.toDouble(),
-      );
-    } catch (e) {
-      return null;
-    }
+    return await DownloadManager.getDownloadProgress(taskId);
   }
 
   /// Move completed download from temp file to final location
   static Future<bool> finalizeDownload(String fileName) async {
-    try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final leapDir = Directory('${appDir.path}/leap');
-      final tempFile = File('${appDir.path}/leap/$fileName.temp');
-      final finalFile = File('${appDir.path}/leap/$fileName');
-
-      print('DEBUG: Finalizing download:');
-      print('DEBUG: App directory: ${appDir.path}');
-      print('DEBUG: LEAP directory exists: ${await leapDir.exists()}');
-      print('DEBUG: Temp file: ${tempFile.path}');
-      print('DEBUG: Final file: ${finalFile.path}');
-      print('DEBUG: Temp file exists: ${await tempFile.exists()}');
-
-      // List all files in leap directory for debugging
-      if (await leapDir.exists()) {
-        final files = await leapDir.list().toList();
-        print('DEBUG: Files in leap directory:');
-        for (var file in files) {
-          if (file is File) {
-            final size = await file.length();
-            print('DEBUG: - ${file.path} (${size} bytes)');
-          } else {
-            print('DEBUG: - ${file.path} (directory)');
-          }
-        }
-      }
-
-      if (await tempFile.exists()) {
-        final tempFileSize = await tempFile.length();
-        print('DEBUG: Temp file size: ${tempFileSize} bytes');
-
-        // Check if final file already exists
-        if (await finalFile.exists()) {
-          print('DEBUG: Final file already exists, deleting it first');
-          await finalFile.delete();
-        }
-
-        await tempFile.rename(finalFile.path);
-        print('DEBUG: File renamed successfully');
-
-        // Verify the rename worked
-        final finalExists = await finalFile.exists();
-        print('DEBUG: Final file exists after rename: $finalExists');
-
-        if (finalExists) {
-          final finalFileSize = await finalFile.length();
-          print('DEBUG: Final file size: ${finalFileSize} bytes');
-        }
-
-        return finalExists;
-      } else {
-        print('DEBUG: Temp file does not exist!');
-
-        // Check if final file already exists (maybe it was already moved?)
-        if (await finalFile.exists()) {
-          final finalFileSize = await finalFile.length();
-          print(
-            'DEBUG: Final file already exists with size: ${finalFileSize} bytes',
-          );
-          return true;
-        }
-
-        return false;
-      }
-    } catch (e) {
-      print('DEBUG: Error during finalization: $e');
-      print('DEBUG: Error type: ${e.runtimeType}');
-      print('DEBUG: Stack trace: ${StackTrace.current}');
-      throw DownloadException(
-        'Failed to finalize download: $e',
-        'FINALIZE_ERROR',
-      );
-    }
+    return await DownloadManager.finalizeDownload(fileName);
   }
 
   /// Get all active download tasks
-  static Future<List<DownloadTask>> getActiveDownloads() async {
-    await _ensureDownloaderInitialized();
-
-    try {
-      final tasks = await FlutterDownloader.loadTasks();
-      return tasks
-              ?.where(
-                (task) =>
-                    task.status == DownloadTaskStatus.running ||
-                    task.status == DownloadTaskStatus.paused,
-              )
-              .toList() ??
-          [];
-    } catch (e) {
-      return [];
-    }
+  static List<DownloadInfo> getActiveDownloads() {
+    return DownloadManager.getActiveDownloads();
   }
 
   /// Check if a specific model file exists
   static Future<bool> checkModelExists(String modelName) async {
     try {
       final appDir = await getApplicationDocumentsDirectory();
-      final modelFile = File('${appDir.path}/leap/$modelName');
-      final exists = await modelFile.exists();
+      final modelPath = '${appDir.path}/leap/$modelName';
+      
+      // Use cached file operations
+      final fileInfo = await FileCache.getFileInfo(modelPath);
+      
+      LeapLogger.fileOp('check_model_exists', modelPath, 
+        details: 'exists: ${fileInfo.exists}, size: ${fileInfo.sizeFormatted}');
 
-      print('DEBUG: Checking model existence:');
-      print('DEBUG: Model path: ${modelFile.path}');
-      print('DEBUG: File exists: $exists');
-
-      if (exists) {
-        final fileSize = await modelFile.length();
-        print('DEBUG: File size: ${fileSize} bytes');
-      }
-
-      return exists;
+      return fileInfo.exists && fileInfo.size > 0;
+      
     } catch (e) {
-      print('DEBUG: Error checking model existence: $e');
+      LeapLogger.error('Error checking model existence: $modelName', e);
       throw FlutterLeapSdkException(
         'Failed to check model existence: $e',
         'CHECK_MODEL_ERROR',
@@ -543,21 +383,16 @@ class FlutterLeapSdkService {
   static Future<List<String>> getDownloadedModels() async {
     try {
       final appDir = await getApplicationDocumentsDirectory();
-      final leapDir = Directory('${appDir.path}/leap');
-
-      if (!await leapDir.exists()) {
-        return [];
-      }
-
-      final files = await leapDir.list().toList();
-      final modelFiles = files
-          .whereType<File>()
-          .where((file) => file.path.endsWith('.bundle'))
-          .map((file) => file.path.split('/').last)
-          .toList();
-
+      final leapDirPath = '${appDir.path}/leap';
+      
+      // Use background file operations
+      final modelFiles = await BackgroundFileOps.listModelFiles(leapDirPath);
+      
+      LeapLogger.info('Found ${modelFiles.length} downloaded models: ${modelFiles.join(', ')}');
       return modelFiles;
+      
     } catch (e) {
+      LeapLogger.error('Failed to get downloaded models', e);
       throw FlutterLeapSdkException(
         'Failed to get downloaded models: $e',
         'GET_MODELS_ERROR',
@@ -582,26 +417,75 @@ class FlutterLeapSdkService {
 
   /// Delete a downloaded model file
   static Future<bool> deleteModel(String fileName) async {
+    return await instance._deleteModel(fileName);
+  }
+  
+  Future<bool> _deleteModel(String fileName) async {
     try {
       final appDir = await getApplicationDocumentsDirectory();
-      final modelFile = File('${appDir.path}/leap/$fileName');
+      final modelPath = '${appDir.path}/leap/$fileName';
 
-      if (await modelFile.exists()) {
-        await modelFile.delete();
-
+      // Use background file operations
+      final deleted = await BackgroundFileOps.deleteFile(modelPath);
+      
+      if (deleted) {
+        // Invalidate cache
+        FileCache.invalidate(modelPath);
+        
+        // Update state if this was the loaded model
         if (_currentLoadedModel == fileName) {
           _currentLoadedModel = '';
           _isModelLoaded = false;
+          LeapLogger.modelOp('Unloaded deleted model', modelName: fileName);
         }
-
+        
+        LeapLogger.fileOp('delete_model', modelPath, details: 'success');
         return true;
       }
+      
+      LeapLogger.warning('Failed to delete model (file may not exist): $fileName');
       return false;
+      
     } catch (e) {
+      LeapLogger.error('Failed to delete model: $fileName', e);
       throw FlutterLeapSdkException(
         'Failed to delete model: $e',
         'DELETE_MODEL_ERROR',
       );
     }
+  }
+  
+  /// Dispose resources and cleanup
+  static void dispose() {
+    instance._dispose();
+  }
+  
+  void _dispose() {
+    _isModelLoaded = false;
+    _currentLoadedModel = '';
+    
+    // Cleanup file cache
+    FileCache.clearCache();
+    
+    // Cleanup download manager
+    DownloadManager.dispose();
+    
+    LeapLogger.info('FlutterLeapSdkService disposed');
+  }
+  
+  /// Get service statistics for debugging
+  static Map<String, dynamic> getStats() {
+    final cacheStats = FileCache.getStats();
+    final activeDownloads = DownloadManager.getActiveDownloads();
+    
+    return {
+      'isModelLoaded': instance._isModelLoaded,
+      'currentModel': instance._currentLoadedModel,
+      'cacheStats': {
+        'totalEntries': cacheStats.totalEntries,
+        'expiredEntries': cacheStats.expiredEntries,
+      },
+      'activeDownloads': activeDownloads.length,
+    };
   }
 }

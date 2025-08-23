@@ -13,6 +13,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.onEach
 import android.util.Log
 import java.io.File
+import java.util.concurrent.Executors
+import androidx.annotation.WorkerThread
 
 class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
   private lateinit var channel : MethodChannel
@@ -70,67 +72,111 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     }
   }
 
+  // Background thread pool for file I/O operations
+  private val fileIOExecutor = Executors.newSingleThreadExecutor()
+  
   private fun loadModel(modelPath: String, result: Result) {
-    mainScope.launch {
-      try {
-        val modelFile = File(modelPath)
-        Log.d("FlutterLeapSDK", "=== MODEL LOADING DEBUG ===")
-        Log.d("FlutterLeapSDK", "Requested model path: $modelPath")
-        Log.d("FlutterLeapSDK", "File exists: ${modelFile.exists()}")
-        
-        if (!modelFile.exists()) {
-          result.error("MODEL_NOT_FOUND", "Model file not found at: $modelPath", null)
-          return@launch
-        }
-        
-        Log.d("FlutterLeapSDK", "File can read: ${modelFile.canRead()}")
-        Log.d("FlutterLeapSDK", "File size: ${modelFile.length()} bytes")
-        Log.d("FlutterLeapSDK", "File absolute path: ${modelFile.absolutePath}")
-        Log.d("FlutterLeapSDK", "File parent directory: ${modelFile.parentFile?.absolutePath}")
-        
-        if (!modelFile.canRead()) {
-          result.error("MODEL_NOT_READABLE", "Cannot read model file at: $modelPath", null)
-          return@launch
-        }
-        
-        // List parent directory contents
-        modelFile.parentFile?.let { parentDir ->
-          Log.d("FlutterLeapSDK", "Parent directory contents:")
-          parentDir.listFiles()?.forEach { file ->
-            Log.d("FlutterLeapSDK", "- ${file.name} (${file.length()} bytes, readable: ${file.canRead()})")
+    // Use background thread for file I/O to prevent ANR
+    fileIOExecutor.execute {
+      mainScope.launch(Dispatchers.IO) {
+        try {
+          val modelFile = File(modelPath)
+          
+          // Secure logging - only log essential info in debug builds
+          Log.d("FlutterLeapSDK", "Loading model: ${modelFile.name}")
+          
+          // Validate file existence and readability
+          val validationResult = validateModelFile(modelFile)
+          if (!validationResult.isValid) {
+            withContext(Dispatchers.Main) {
+              result.error(validationResult.errorCode, validationResult.errorMessage, null)
+            }
+            return@launch
+          }
+          
+          // Log file info in debug builds only
+          Log.d("FlutterLeapSDK", "File size: ${formatFileSize(modelFile.length())}")
+          
+          // Unload existing model on background thread
+          modelRunner?.unload()
+          modelRunner = null
+          
+          // Load new model
+          modelRunner = LeapClient.loadModel(modelPath)
+          
+          // Switch back to main thread for result
+          withContext(Dispatchers.Main) {
+            result.success("Model loaded successfully")
+          }
+          
+        } catch (e: Exception) {
+          // Error logging
+          Log.e("FlutterLeapSDK", "Model loading failed: ${e.javaClass.simpleName}")
+          Log.e("FlutterLeapSDK", "Error details: ${e.message}")
+          
+          val errorMessage = formatLoadingError(e)
+          withContext(Dispatchers.Main) {
+            result.error("MODEL_LOADING_ERROR", errorMessage, null)
           }
         }
-        
-        Log.d("FlutterLeapSDK", "Calling LeapClient.loadModel...")
-        
-        // Unload any existing model first
-        modelRunner?.unload()
-        modelRunner = null
-        
-        modelRunner = LeapClient.loadModel(modelPath)
-        Log.d("FlutterLeapSDK", "Model loaded successfully!")
-        result.success("Model loaded successfully from $modelPath")
-      } catch (e: Exception) {
-        Log.e("FlutterLeapSDK", "Failed to load model", e)
-        Log.e("FlutterLeapSDK", "Exception type: ${e.javaClass.simpleName}")
-        Log.e("FlutterLeapSDK", "Exception message: ${e.message}")
-        Log.e("FlutterLeapSDK", "Exception cause: ${e.cause}")
-        
-        // Additional debugging for potential file issues
-        val modelFile = File(modelPath)
-        Log.e("FlutterLeapSDK", "File still exists after error: ${modelFile.exists()}")
-        Log.e("FlutterLeapSDK", "File still readable after error: ${modelFile.canRead()}")
-        
-        // Provide more specific error information
-        val errorMessage = when {
-            e.message?.contains("34") == true -> "Failed to load model: Executorch Error 34 - This may be due to incompatible model format, device architecture (requires ARM64), or corrupted model file. Details: ${e.message}"
-            e.message?.contains("load error") == true -> "Failed to load model: Model loading error - ${e.message}. Check if the model is compatible with LEAP SDK ${getLeapSDKVersion()}"
-            else -> "Failed to load model: ${e.message}"
-        }
-        result.error("MODEL_LOADING_ERROR", errorMessage, null)
       }
     }
   }
+  
+  @WorkerThread
+  private fun validateModelFile(file: File): FileValidationResult {
+    if (!file.exists()) {
+      return FileValidationResult(
+        isValid = false,
+        errorCode = "MODEL_NOT_FOUND",
+        errorMessage = "Model file not found"
+      )
+    }
+    
+    if (!file.canRead()) {
+      return FileValidationResult(
+        isValid = false,
+        errorCode = "MODEL_NOT_READABLE",
+        errorMessage = "Cannot read model file (check permissions)"
+      )
+    }
+    
+    if (file.length() == 0L) {
+      return FileValidationResult(
+        isValid = false,
+        errorCode = "MODEL_EMPTY",
+        errorMessage = "Model file is empty"
+      )
+    }
+    
+    return FileValidationResult(isValid = true)
+  }
+  
+  private fun formatLoadingError(e: Exception): String {
+    return when {
+      e.message?.contains("34") == true -> 
+        "Model loading failed (Error 34): Incompatible model format or device architecture. Ensure device supports ARM64 and model is compatible with LEAP SDK."
+      e.message?.contains("load error") == true -> 
+        "Model loading error: Check model compatibility with LEAP SDK ${getLeapSDKVersion()}"
+      else -> 
+        "Model loading failed: ${e.message ?: "Unknown error"}"
+    }
+  }
+  
+  private fun formatFileSize(bytes: Long): String {
+    return when {
+      bytes < 1024 -> "${bytes}B"
+      bytes < 1024 * 1024 -> "${bytes / 1024}KB"
+      bytes < 1024 * 1024 * 1024 -> "${bytes / 1024 / 1024}MB"
+      else -> "${bytes / 1024 / 1024 / 1024}GB"
+    }
+  }
+  
+  private data class FileValidationResult(
+    val isValid: Boolean,
+    val errorCode: String = "",
+    val errorMessage: String = ""
+  )
 
   private fun generateResponse(message: String, result: Result) {
     val runner = modelRunner
@@ -139,10 +185,23 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       return
     }
     
-    mainScope.launch {
+    // Validate input
+    if (message.trim().isEmpty()) {
+      result.error("INVALID_INPUT", "Message cannot be empty", null)
+      return
+    }
+    
+    if (message.length > 4096) {
+      result.error("INPUT_TOO_LONG", "Message too long (max 4096 characters)", null)
+      return
+    }
+    
+    mainScope.launch(Dispatchers.IO) {
       try {
         val conversation = runner.createConversation()
         var fullResponse = ""
+        
+        Log.d("FlutterLeapSDK", "Generating response (${message.length} chars)")
         
         conversation.generateResponse(message)
           .onEach { response ->
@@ -158,19 +217,27 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
                 fullResponse += extractedText
               }
               is MessageResponse.Complete -> {
-                Log.d("FlutterLeapSDK", "Generation completed")
+                Log.d("FlutterLeapSDK", "Generation completed (${fullResponse.length} chars)")
               }
               else -> {
-                Log.d("FlutterLeapSDK", "Other response type: $response")
+                // Log other response types
+                Log.d("FlutterLeapSDK", "Response type: ${response.javaClass.simpleName}")
               }
             }
           }
           .collect { }
         
-        result.success(fullResponse)
+        withContext(Dispatchers.Main) {
+          result.success(fullResponse)
+        }
+        
       } catch (e: Exception) {
-        Log.e("FlutterLeapSDK", "Error generating response", e)
-        result.error("GENERATION_ERROR", "Error generating response: ${e.message}", null)
+        Log.e("FlutterLeapSDK", "Error generating response: ${e.javaClass.simpleName}")
+        Log.e("FlutterLeapSDK", "Error details: ${e.message}")
+        
+        withContext(Dispatchers.Main) {
+          result.error("GENERATION_ERROR", "Error generating response: ${e.message ?: "Unknown error"}", null)
+        }
       }
     }
   }
@@ -182,12 +249,27 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       return
     }
     
+    // Validate input
+    if (message.trim().isEmpty()) {
+      result.error("INVALID_INPUT", "Message cannot be empty", null)
+      return
+    }
+    
+    if (message.length > 4096) {
+      result.error("INPUT_TOO_LONG", "Message too long (max 4096 characters)", null)
+      return
+    }
+    
     activeStreamingJob?.cancel()
     shouldCancelStreaming = false
     
     activeStreamingJob = mainScope.launch(Dispatchers.IO) {
       try {
-        result.success("Streaming started")
+        withContext(Dispatchers.Main) {
+          result.success("Streaming started")
+        }
+        
+        Log.d("FlutterLeapSDK", "Starting stream (${message.length} chars)")
         
         val conversation = runner.createConversation()
         
@@ -218,9 +300,11 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
                 launch(Dispatchers.Main) {
                   streamingSink?.success("<STREAM_END>")
                 }
+                Log.d("FlutterLeapSDK", "Streaming completed")
               }
               else -> {
-                Log.d("FlutterLeapSDK", "Other response type: $response")
+                // Log other response types
+                Log.d("FlutterLeapSDK", "Stream response type: ${response.javaClass.simpleName}")
               }
             }
           }
@@ -230,9 +314,10 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         if (e is CancellationException) {
           Log.d("FlutterLeapSDK", "Streaming was cancelled")
         } else {
-          Log.e("FlutterLeapSDK", "Error in streaming response", e)
+          Log.e("FlutterLeapSDK", "Error in streaming: ${e.javaClass.simpleName}")
+          Log.e("FlutterLeapSDK", "Streaming error details: ${e.message}")
           launch(Dispatchers.Main) {
-            streamingSink?.error("STREAMING_ERROR", "Error generating streaming response: ${e.message}", null)
+            streamingSink?.error("STREAMING_ERROR", "Error generating streaming response: ${e.message ?: "Unknown error"}", null)
           }
         }
       } finally {
@@ -246,17 +331,30 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     shouldCancelStreaming = true
     activeStreamingJob?.cancel()
     activeStreamingJob = null
+    
+    Log.d("FlutterLeapSDK", "Streaming cancelled")
+    
     result.success("Streaming cancelled")
   }
 
   private fun unloadModel(result: Result) {
-    mainScope.launch {
+    mainScope.launch(Dispatchers.IO) {
       try {
         modelRunner?.unload()
         modelRunner = null
-        result.success("Model unloaded successfully")
+        
+        Log.d("FlutterLeapSDK", "Model unloaded successfully")
+        
+        withContext(Dispatchers.Main) {
+          result.success("Model unloaded successfully")
+        }
       } catch (e: Exception) {
-        result.error("UNLOAD_ERROR", "Failed to unload model: ${e.message}", null)
+        Log.e("FlutterLeapSDK", "Failed to unload model: ${e.javaClass.simpleName}")
+        Log.e("FlutterLeapSDK", "Unload error details: ${e.message}")
+        
+        withContext(Dispatchers.Main) {
+          result.error("UNLOAD_ERROR", "Failed to unload model: ${e.message ?: "Unknown error"}", null)
+        }
       }
     }
   }
@@ -272,7 +370,26 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     channel.setMethodCallHandler(null)
+    
+    // Cancel active streaming
+    shouldCancelStreaming = true
     activeStreamingJob?.cancel()
+    
+    // Cleanup resources
+    try {
+      modelRunner?.unload()
+      modelRunner = null
+    } catch (e: Exception) {
+      // Ignore cleanup errors
+      Log.w("FlutterLeapSDK", "Error during cleanup: ${e.message}")
+    }
+    
+    // Shutdown executor
+    fileIOExecutor.shutdown()
+    
+    // Cancel coroutine scope
     mainScope.cancel()
+    
+    Log.d("FlutterLeapSDK", "Plugin detached and cleaned up")
   }
 }

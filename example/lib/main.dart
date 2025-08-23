@@ -36,6 +36,9 @@ class _ChatScreenState extends State<ChatScreen> {
   String _status = 'No model loaded';
   String? _currentDownloadTaskId;
   bool _hasText = false;
+  String _fileOperationStatus = '';
+  double _downloadProgress = 0.0;
+  bool _isFinalizingDownload = false;
 
   @override
   void initState() {
@@ -45,6 +48,10 @@ class _ChatScreenState extends State<ChatScreen> {
         _hasText = _messageController.text.isNotEmpty;
       });
     });
+    
+    // Initialize the service and logging
+    FlutterLeapSdkService.initialize();
+    
     _checkModelStatus();
   }
 
@@ -58,6 +65,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       setState(() {
         _status = 'Checking model status...';
+        _fileOperationStatus = 'Loading model information...';
       });
 
       final isLoaded = await FlutterLeapSdkService.checkModelLoaded();
@@ -68,9 +76,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
       setState(() {
         _isModelLoaded = isLoaded;
+        _fileOperationStatus = '';
         
         if (isLoaded) {
-          _status = '✅ Model loaded and ready';
+          _status = '✅ Model loaded and ready (${FlutterLeapSdkService.currentLoadedModel})';
         } else if (modelExists) {
           _status = '📁 Model downloaded, click "Load Model" to use';
         } else if (downloadedModels.isNotEmpty) {
@@ -82,6 +91,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       setState(() {
         _status = '❌ Error: ${e.toString().split('\n').first}';
+        _fileOperationStatus = '';
       });
     }
   }
