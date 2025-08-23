@@ -159,7 +159,7 @@ class FlutterLeapSdkService {
         url: url,
         fileName: tempFileName,
         savedDir: leapDir.path,
-        showNotification: true,
+        showNotification: false,
         openFileFromNotification: false,
       );
 
