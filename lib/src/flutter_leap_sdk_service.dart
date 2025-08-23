@@ -212,10 +212,40 @@ class FlutterLeapSdkService {
           
           onProgress(progress);
           
-          // Stop monitoring when complete or failed
-          if (task.status == DownloadTaskStatus.complete || 
-              task.status == DownloadTaskStatus.failed ||
-              task.status == DownloadTaskStatus.canceled) {
+          // Handle completion - finalize the download
+          if (task.status == DownloadTaskStatus.complete) {
+            timer.cancel();
+            try {
+              // Notify that finalization is starting
+              final finalizingProgress = DownloadProgress(
+                bytesDownloaded: 100,
+                totalBytes: 100,
+                percentage: 100.0,
+              );
+              onProgress(finalizingProgress);
+              
+              // Extract original filename from temp filename
+              final tempFileName = task.filename;
+              if (tempFileName != null && tempFileName.endsWith('.temp')) {
+                final originalFileName = tempFileName.replaceAll('.temp', '');
+                await finalizeDownload(originalFileName);
+                
+                // Send final completion progress
+                final completionProgress = DownloadProgress(
+                  bytesDownloaded: 100,
+                  totalBytes: 100,
+                  percentage: 100.0,
+                );
+                onProgress(completionProgress);
+              }
+            } catch (e) {
+              // Even if finalization fails, at least notify completion
+              print('Failed to finalize download: $e');
+            }
+          }
+          // Stop monitoring when failed or canceled
+          else if (task.status == DownloadTaskStatus.failed ||
+                   task.status == DownloadTaskStatus.canceled) {
             timer.cancel();
           }
         }

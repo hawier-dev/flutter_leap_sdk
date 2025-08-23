@@ -67,7 +67,12 @@ class _MyHomePageState extends State<MyHomePage> {
       final taskId = await FlutterLeapSdkService.downloadLFM2_350M(
         onProgress: (progress) {
           setState(() {
-            _status = 'Downloading: ${progress.percentage.toStringAsFixed(2)}%';
+            if (progress.percentage >= 100.0) {
+              _status = 'Download completed! Model ready to load.';
+              _currentDownloadTaskId = null;
+            } else {
+              _status = 'Downloading: ${progress.percentage.toStringAsFixed(2)}%';
+            }
           });
         },
       );
