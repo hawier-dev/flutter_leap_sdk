@@ -377,7 +377,9 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     
     // Cleanup resources
     try {
-      modelRunner?.unload()
+      CoroutineScope(Dispatchers.IO).launch {
+        modelRunner?.unload()
+      }
       modelRunner = null
     } catch (e: Exception) {
       // Ignore cleanup errors
