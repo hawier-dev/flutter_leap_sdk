@@ -35,6 +35,7 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isLoading = false;
   bool _isModelLoaded = false;
   String _status = 'No model loaded';
+  String? _currentDownloadTaskId;
 
   @override
   void initState() {
@@ -59,21 +60,24 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _downloadModel() async {
     setState(() {
       _isLoading = true;
-      _status = 'Downloading model...';
+      _status = 'Starting download...';
     });
 
     try {
-      await FlutterLeapSdkService.downloadModel(
-        modelName: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
+      final taskId = await FlutterLeapSdkService.downloadLFM2_350M(
         onProgress: (progress) {
           setState(() {
             _status = 'Downloading: ${progress.percentage.toStringAsFixed(1)}%';
           });
         },
       );
-      setState(() {
-        _status = 'Model downloaded successfully';
-      });
+      
+      if (taskId != null) {
+        _currentDownloadTaskId = taskId;
+        setState(() {
+          _status = 'Download started (Task: ${taskId.substring(0, 8)}...)';
+        });
+      }
     } catch (e) {
       setState(() {
         _status = 'Download failed: $e';
@@ -82,6 +86,22 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _cancelDownload() async {
+    if (_currentDownloadTaskId != null) {
+      try {
+        await FlutterLeapSdkService.cancelDownload(_currentDownloadTaskId!);
+        setState(() {
+          _status = 'Download cancelled';
+          _currentDownloadTaskId = null;
+        });
+      } catch (e) {
+        setState(() {
+          _status = 'Failed to cancel: $e';
+        });
+      }
     }
   }
 
@@ -191,7 +211,14 @@ class _MyHomePageState extends State<MyHomePage> {
                     child: const Text('Download Model'),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
+                if (_currentDownloadTaskId != null)
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _cancelDownload,
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    child: const Text('Cancel', style: TextStyle(color: Colors.white)),
+                  ),
+                const SizedBox(width: 4),
                 Expanded(
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _loadModel,

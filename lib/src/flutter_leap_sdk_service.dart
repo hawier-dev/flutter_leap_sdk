@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter_downloader/flutter_downloader.dart';
 import 'models.dart';
 import 'exceptions.dart';
 
@@ -135,14 +135,15 @@ class FlutterLeapSdkService {
     }
   }
 
-  /// Download a model with progress tracking
-  static Future<String> downloadModel({
+  /// Download a model using flutter_downloader
+  static Future<String?> downloadModel({
     String? modelUrl,
     String? modelName,
     Function(DownloadProgress)? onProgress,
   }) async {
     try {
       final fileName = modelName ?? 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle';
+      final tempFileName = '$fileName.temp';
       final url = modelUrl ?? availableModels[fileName]?.url ?? 
           'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle?download=true';
 
@@ -153,45 +154,148 @@ class FlutterLeapSdkService {
         await leapDir.create(recursive: true);
       }
 
-      final file = File('${leapDir.path}/$fileName');
-      final request = http.Request('GET', Uri.parse(url));
-      final response = await http.Client().send(request);
+      // Start download and return taskId
+      final taskId = await FlutterDownloader.enqueue(
+        url: url,
+        fileName: tempFileName,
+        savedDir: leapDir.path,
+        showNotification: true,
+        openFileFromNotification: false,
+      );
 
-      if (response.statusCode != 200) {
-        throw DownloadException('Failed to download model: HTTP ${response.statusCode}', 'DOWNLOAD_ERROR');
+      // Set up progress monitoring if callback provided
+      if (onProgress != null && taskId != null) {
+        _monitorDownloadProgress(taskId, onProgress);
       }
 
-      final contentLength = response.contentLength ?? 0;
-      final sink = file.openWrite();
-      int bytesDownloaded = 0;
-
-      await response.stream.listen(
-        (List<int> chunk) {
-          sink.add(chunk);
-          bytesDownloaded += chunk.length;
-          
-          if (onProgress != null && contentLength > 0) {
-            final percentage = (bytesDownloaded / contentLength) * 100;
-            onProgress(DownloadProgress(
-              bytesDownloaded: bytesDownloaded,
-              totalBytes: contentLength,
-              percentage: percentage,
-            ));
-          }
-        },
-        onError: (error) {
-          sink.close();
-          throw DownloadException('Download failed: $error', 'DOWNLOAD_ERROR');
-        },
-        onDone: () {
-          sink.close();
-        },
-      ).asFuture();
-
-      return 'Model downloaded successfully to ${file.path}';
+      return taskId;
     } catch (e) {
-      if (e is DownloadException) rethrow;
-      throw DownloadException('Failed to download model: $e', 'DOWNLOAD_ERROR');
+      throw DownloadException('Failed to start download: $e', 'DOWNLOAD_ERROR');
+    }
+  }
+
+  /// Monitor download progress for a specific task
+  static void _monitorDownloadProgress(String taskId, Function(DownloadProgress) onProgress) {
+    Timer.periodic(const Duration(seconds: 1), (timer) async {
+      try {
+        final tasks = await FlutterDownloader.loadTasks();
+        final task = tasks?.firstWhere((t) => t.taskId == taskId, orElse: () => throw Exception('Task not found'));
+        
+        if (task != null) {
+          final progress = DownloadProgress(
+            bytesDownloaded: task.progress,
+            totalBytes: 100,
+            percentage: task.progress.toDouble(),
+          );
+          
+          onProgress(progress);
+          
+          // Stop monitoring when complete or failed
+          if (task.status == DownloadTaskStatus.complete || 
+              task.status == DownloadTaskStatus.failed ||
+              task.status == DownloadTaskStatus.canceled) {
+            timer.cancel();
+          }
+        }
+      } catch (e) {
+        timer.cancel();
+      }
+    });
+  }
+
+  /// Cancel download by taskId
+  static Future<void> cancelDownload(String taskId) async {
+    try {
+      await FlutterDownloader.cancel(taskId: taskId);
+    } catch (e) {
+      throw DownloadException('Failed to cancel download: $e', 'CANCEL_ERROR');
+    }
+  }
+
+  /// Pause download by taskId
+  static Future<void> pauseDownload(String taskId) async {
+    try {
+      await FlutterDownloader.pause(taskId: taskId);
+    } catch (e) {
+      throw DownloadException('Failed to pause download: $e', 'PAUSE_ERROR');
+    }
+  }
+
+  /// Resume download by taskId
+  static Future<String?> resumeDownload(String taskId) async {
+    try {
+      return await FlutterDownloader.resume(taskId: taskId);
+    } catch (e) {
+      throw DownloadException('Failed to resume download: $e', 'RESUME_ERROR');
+    }
+  }
+
+  /// Retry failed download by taskId
+  static Future<String?> retryDownload(String taskId) async {
+    try {
+      return await FlutterDownloader.retry(taskId: taskId);
+    } catch (e) {
+      throw DownloadException('Failed to retry download: $e', 'RETRY_ERROR');
+    }
+  }
+
+  /// Get download status for a taskId
+  static Future<DownloadTaskStatus?> getDownloadStatus(String taskId) async {
+    try {
+      final tasks = await FlutterDownloader.loadTasks();
+      final task = tasks?.firstWhere((t) => t.taskId == taskId, orElse: () => throw Exception('Task not found'));
+      return task?.status;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Get download progress for a taskId
+  static Future<DownloadProgress?> getDownloadProgress(String taskId) async {
+    try {
+      final tasks = await FlutterDownloader.loadTasks();
+      final task = tasks?.firstWhere((t) => t.taskId == taskId, orElse: () => throw Exception('Task not found'));
+      
+      if (task != null) {
+        return DownloadProgress(
+          bytesDownloaded: task.progress,
+          totalBytes: 100,
+          percentage: task.progress.toDouble(),
+        );
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Move completed download from temp file to final location
+  static Future<bool> finalizeDownload(String fileName) async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final tempFile = File('${appDir.path}/leap/$fileName.temp');
+      final finalFile = File('${appDir.path}/leap/$fileName');
+
+      if (await tempFile.exists()) {
+        await tempFile.rename(finalFile.path);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      throw DownloadException('Failed to finalize download: $e', 'FINALIZE_ERROR');
+    }
+  }
+
+  /// Get all active download tasks
+  static Future<List<DownloadTask>> getActiveDownloads() async {
+    try {
+      final tasks = await FlutterDownloader.loadTasks();
+      return tasks?.where((task) => 
+        task.status == DownloadTaskStatus.running || 
+        task.status == DownloadTaskStatus.paused
+      ).toList() ?? [];
+    } catch (e) {
+      return [];
     }
   }
 
@@ -241,6 +345,30 @@ class FlutterLeapSdkService {
   /// Get model info for a file
   static ModelInfo? getModelInfo(String fileName) {
     return availableModels[fileName];
+  }
+
+  /// Download LFM2-350M model
+  static Future<String?> downloadLFM2_350M({Function(DownloadProgress)? onProgress}) async {
+    return downloadModel(
+      modelName: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
+      onProgress: onProgress,
+    );
+  }
+
+  /// Download LFM2-700M model
+  static Future<String?> downloadLFM2_700M({Function(DownloadProgress)? onProgress}) async {
+    return downloadModel(
+      modelName: 'LFM2-700M-8da4w_output_8da8w-seq_4096.bundle',
+      onProgress: onProgress,
+    );
+  }
+
+  /// Download LFM2-1.2B model
+  static Future<String?> downloadLFM2_1_2B({Function(DownloadProgress)? onProgress}) async {
+    return downloadModel(
+      modelName: 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle',
+      onProgress: onProgress,
+    );
   }
 
   /// Delete a downloaded model file
