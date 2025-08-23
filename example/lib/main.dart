@@ -12,9 +12,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter LEAP SDK Demo',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
+      theme: ThemeData(primarySwatch: Colors.blue),
       home: const MyHomePage(title: 'Flutter LEAP SDK Demo'),
     );
   }
@@ -52,18 +50,23 @@ class _MyHomePageState extends State<MyHomePage> {
       print('DEBUG: Starting model status check');
       final isLoaded = await FlutterLeapSdkService.checkModelLoaded();
       print('DEBUG: Model loaded status: $isLoaded');
-      
+
       // Also check if model file exists
-      final modelExists = await FlutterLeapSdkService.checkModelExists('LFM2-350M-8da4w_output_8da8w-seq_4096.bundle');
+      final modelExists = await FlutterLeapSdkService.checkModelExists(
+        'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
+      );
       print('DEBUG: Model file exists: $modelExists');
-      
+
       // Get list of all downloaded models
-      final downloadedModels = await FlutterLeapSdkService.getDownloadedModels();
+      final downloadedModels =
+          await FlutterLeapSdkService.getDownloadedModels();
       print('DEBUG: Downloaded models: $downloadedModels');
-      
+
       setState(() {
         _isModelLoaded = isLoaded;
-        String statusText = isLoaded ? 'Model loaded: ${FlutterLeapSdkService.currentLoadedModel}' : 'No model loaded';
+        String statusText = isLoaded
+            ? 'Model loaded: ${FlutterLeapSdkService.currentLoadedModel}'
+            : 'No model loaded';
         statusText += '\nModel file exists: $modelExists';
         statusText += '\nDownloaded models: ${downloadedModels.length}';
         if (downloadedModels.isNotEmpty) {
@@ -104,12 +107,13 @@ class _MyHomePageState extends State<MyHomePage> {
                 _checkModelStatus();
               });
             } else {
-              _status = 'Downloading: ${progress.percentage.toStringAsFixed(2)}%';
+              _status =
+                  'Downloading: ${progress.percentage.toStringAsFixed(2)}%';
             }
           });
         },
       );
-      
+
       if (taskId != null) {
         _currentDownloadTaskId = taskId;
         print('DEBUG: Download task started: $taskId');
@@ -154,12 +158,16 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
     try {
-      print('DEBUG: Attempting to load model: LFM2-350M-8da4w_output_8da8w-seq_4096.bundle');
-      
+      print(
+        'DEBUG: Attempting to load model: LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
+      );
+
       // First check if file exists before trying to load
-      final modelExists = await FlutterLeapSdkService.checkModelExists('LFM2-350M-8da4w_output_8da8w-seq_4096.bundle');
+      final modelExists = await FlutterLeapSdkService.checkModelExists(
+        'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
+      );
       print('DEBUG: Model file exists before load: $modelExists');
-      
+
       if (!modelExists) {
         setState(() {
           _status = 'ERROR: Model file not found! Please download first.';
@@ -171,19 +179,21 @@ class _MyHomePageState extends State<MyHomePage> {
         modelPath: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
       );
       print('DEBUG: Model load result: $result');
-      
+
       // Verify the model is actually loaded
       final isLoaded = await FlutterLeapSdkService.checkModelLoaded();
       print('DEBUG: Model loaded verification: $isLoaded');
-      
+
       setState(() {
         _isModelLoaded = isLoaded;
-        _status = 'Model load result: $result\nVerification: Model loaded = $isLoaded';
+        _status =
+            'Model load result: $result\nVerification: Model loaded = $isLoaded';
       });
     } catch (e) {
       print('DEBUG: Model load error: $e');
       setState(() {
-        _status = 'Failed to load model: $e\n\nFull error details: ${e.toString()}';
+        _status =
+            'Failed to load model: $e\n\nFull error details: ${e.toString()}';
       });
     } finally {
       setState(() {
@@ -201,7 +211,9 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
     try {
-      final response = await FlutterLeapSdkService.generateResponse(_messageController.text);
+      final response = await FlutterLeapSdkService.generateResponse(
+        _messageController.text,
+      );
       setState(() {
         _response = response;
       });
@@ -224,7 +236,9 @@ class _MyHomePageState extends State<MyHomePage> {
       _response = '';
     });
 
-    FlutterLeapSdkService.generateResponseStream(_messageController.text).listen(
+    FlutterLeapSdkService.generateResponseStream(
+      _messageController.text,
+    ).listen(
       (chunk) {
         setState(() {
           _response += chunk;
@@ -247,9 +261,7 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
+      appBar: AppBar(title: Text(widget.title)),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -263,7 +275,9 @@ class _MyHomePageState extends State<MyHomePage> {
                   children: [
                     Text(
                       'Status',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Container(
@@ -275,7 +289,9 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                       child: Text(
                         _status,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontFamily: 'monospace'),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontFamily: 'monospace',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -309,8 +325,13 @@ class _MyHomePageState extends State<MyHomePage> {
                 if (_currentDownloadTaskId != null)
                   ElevatedButton(
                     onPressed: _isLoading ? null : _cancelDownload,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                    child: const Text('Cancel', style: TextStyle(color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                    ),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: Colors.white),
+                    ),
                   ),
                 const SizedBox(width: 4),
                 Expanded(
@@ -335,14 +356,18 @@ class _MyHomePageState extends State<MyHomePage> {
               children: [
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: (_isModelLoaded && !_isLoading) ? _generateResponse : null,
+                    onPressed: (_isModelLoaded && !_isLoading)
+                        ? _generateResponse
+                        : null,
                     child: const Text('Generate Response'),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: (_isModelLoaded && !_isLoading) ? _generateStreamingResponse : null,
+                    onPressed: (_isModelLoaded && !_isLoading)
+                        ? _generateStreamingResponse
+                        : null,
                     child: const Text('Stream Response'),
                   ),
                 ),
@@ -355,7 +380,9 @@ class _MyHomePageState extends State<MyHomePage> {
                   padding: const EdgeInsets.all(8.0),
                   child: SingleChildScrollView(
                     child: Text(
-                      _response.isEmpty ? 'Response will appear here...' : _response,
+                      _response.isEmpty
+                          ? 'Response will appear here...'
+                          : _response,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),

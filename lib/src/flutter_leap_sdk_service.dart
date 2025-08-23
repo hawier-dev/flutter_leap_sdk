@@ -8,7 +8,9 @@ import 'exceptions.dart';
 
 class FlutterLeapSdkService {
   static const MethodChannel _channel = MethodChannel('flutter_leap_sdk');
-  static const EventChannel _streamChannel = EventChannel('flutter_leap_sdk_streaming');
+  static const EventChannel _streamChannel = EventChannel(
+    'flutter_leap_sdk_streaming',
+  );
 
   static bool _isModelLoaded = false;
   static String _currentLoadedModel = '';
@@ -20,19 +22,22 @@ class FlutterLeapSdkService {
       fileName: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
       displayName: 'LFM2-350M',
       size: '322 MB',
-      url: 'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-350M-8da4w_output_8da8w-seq_4096.bundle?download=true',
+      url:
+          'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-350M-8da4w_output_8da8w-seq_4096.bundle?download=true',
     ),
     'LFM2-700M-8da4w_output_8da8w-seq_4096.bundle': ModelInfo(
       fileName: 'LFM2-700M-8da4w_output_8da8w-seq_4096.bundle',
       displayName: 'LFM2-700M',
       size: '610 MB',
-      url: 'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-700M-8da4w_output_8da8w-seq_4096.bundle?download=true',
+      url:
+          'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-700M-8da4w_output_8da8w-seq_4096.bundle?download=true',
     ),
     'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle': ModelInfo(
       fileName: 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle',
       displayName: 'LFM2-1.2B',
       size: '924 MB',
-      url: 'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle?download=true',
+      url:
+          'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle?download=true',
     ),
   };
 
@@ -42,10 +47,7 @@ class FlutterLeapSdkService {
   /// Initialize flutter_downloader
   static Future<void> initialize() async {
     if (!_isDownloaderInitialized) {
-      await FlutterDownloader.initialize(
-        debug: false,
-        ignoreSsl: false,
-      );
+      await FlutterDownloader.initialize(debug: false, ignoreSsl: false);
       _isDownloaderInitialized = true;
     }
   }
@@ -71,16 +73,17 @@ class FlutterLeapSdkService {
 
       print('DEBUG: Loading model:');
       print('DEBUG: Model path: $fullPath');
-      
+
       final modelFile = File(fullPath);
       final exists = await modelFile.exists();
       print('DEBUG: File exists: $exists');
-      
+
       if (exists) {
         final fileSize = await modelFile.length();
         print('DEBUG: File size: ${fileSize} bytes');
       } else {
         print('DEBUG: File does not exist! Available files:');
+        final appDir = await getApplicationDocumentsDirectory();
         final leapDir = Directory('${appDir.path}/leap');
         if (await leapDir.exists()) {
           final files = await leapDir.list().toList();
@@ -113,7 +116,10 @@ class FlutterLeapSdkService {
       _currentLoadedModel = '';
       return result;
     } on PlatformException catch (e) {
-      throw FlutterLeapSdkException('Failed to unload model: ${e.message}', e.code);
+      throw FlutterLeapSdkException(
+        'Failed to unload model: ${e.message}',
+        e.code,
+      );
     }
   }
 
@@ -124,7 +130,10 @@ class FlutterLeapSdkService {
       _isModelLoaded = result;
       return result;
     } on PlatformException catch (e) {
-      throw FlutterLeapSdkException('Failed to check model status: ${e.message}', e.code);
+      throw FlutterLeapSdkException(
+        'Failed to check model status: ${e.message}',
+        e.code,
+      );
     }
   }
 
@@ -140,7 +149,10 @@ class FlutterLeapSdkService {
       });
       return result;
     } on PlatformException catch (e) {
-      throw GenerationException('Failed to generate response: ${e.message}', e.code);
+      throw GenerationException(
+        'Failed to generate response: ${e.message}',
+        e.code,
+      );
     }
   }
 
@@ -165,7 +177,10 @@ class FlutterLeapSdkService {
         }
       }
     } on PlatformException catch (e) {
-      throw GenerationException('Failed to generate streaming response: ${e.message}', e.code);
+      throw GenerationException(
+        'Failed to generate streaming response: ${e.message}',
+        e.code,
+      );
     }
   }
 
@@ -174,7 +189,10 @@ class FlutterLeapSdkService {
     try {
       await _channel.invokeMethod('cancelStreaming');
     } on PlatformException catch (e) {
-      throw FlutterLeapSdkException('Failed to cancel streaming: ${e.message}', e.code);
+      throw FlutterLeapSdkException(
+        'Failed to cancel streaming: ${e.message}',
+        e.code,
+      );
     }
   }
 
@@ -185,11 +203,14 @@ class FlutterLeapSdkService {
     Function(DownloadProgress)? onProgress,
   }) async {
     await _ensureDownloaderInitialized();
-    
+
     try {
-      final fileName = modelName ?? 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle';
+      final fileName =
+          modelName ?? 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle';
       final tempFileName = '$fileName.temp';
-      final url = modelUrl ?? availableModels[fileName]?.url ?? 
+      final url =
+          modelUrl ??
+          availableModels[fileName]?.url ??
           'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle?download=true';
 
       final appDir = await getApplicationDocumentsDirectory();
@@ -220,20 +241,28 @@ class FlutterLeapSdkService {
   }
 
   /// Monitor download progress for a specific task
-  static void _monitorDownloadProgress(String taskId, Function(DownloadProgress) onProgress) {
+  static void _monitorDownloadProgress(
+    String taskId,
+    Function(DownloadProgress) onProgress,
+  ) {
     Timer.periodic(const Duration(milliseconds: 250), (timer) async {
       try {
         await _ensureDownloaderInitialized();
         final tasks = await FlutterDownloader.loadTasks();
-        
+
         if (tasks == null || tasks.isEmpty) {
           print('DEBUG: No tasks found, cancelling timer');
           timer.cancel();
           return;
         }
-        
-        final task = tasks.firstWhere((t) => t.taskId == taskId, orElse: () => null);
-        
+
+        DownloadTask? task;
+        try {
+          task = tasks.firstWhere((t) => t.taskId == taskId);
+        } catch (e) {
+          task = null;
+        }
+
         if (task == null) {
           print('DEBUG: Task $taskId not found, cancelling timer');
           timer.cancel();
@@ -241,15 +270,15 @@ class FlutterLeapSdkService {
         }
 
         print('DEBUG: Task status: ${task.status}, progress: ${task.progress}');
-        
+
         final progress = DownloadProgress(
           bytesDownloaded: task.progress,
           totalBytes: 100,
           percentage: task.progress.toDouble(),
         );
-        
+
         onProgress(progress);
-        
+
         // Handle completion - finalize the download
         if (task.status == DownloadTaskStatus.complete) {
           timer.cancel();
@@ -262,7 +291,7 @@ class FlutterLeapSdkService {
               percentage: 100.0,
             );
             onProgress(finalizingProgress);
-            
+
             // Extract original filename from temp filename
             final tempFileName = task.filename;
             print('DEBUG: Temp filename: $tempFileName');
@@ -271,7 +300,7 @@ class FlutterLeapSdkService {
               print('DEBUG: Finalizing to: $originalFileName');
               final success = await finalizeDownload(originalFileName);
               print('DEBUG: Finalization result: $success');
-              
+
               // Send final completion progress
               final completionProgress = DownloadProgress(
                 bytesDownloaded: 100,
@@ -287,7 +316,7 @@ class FlutterLeapSdkService {
         }
         // Stop monitoring when failed or canceled
         else if (task.status == DownloadTaskStatus.failed ||
-                 task.status == DownloadTaskStatus.canceled) {
+            task.status == DownloadTaskStatus.canceled) {
           print('DEBUG: Task failed or cancelled: ${task.status}');
           timer.cancel();
         }
@@ -301,7 +330,7 @@ class FlutterLeapSdkService {
   /// Cancel download by taskId
   static Future<void> cancelDownload(String taskId) async {
     await _ensureDownloaderInitialized();
-    
+
     try {
       await FlutterDownloader.cancel(taskId: taskId);
     } catch (e) {
@@ -312,7 +341,7 @@ class FlutterLeapSdkService {
   /// Pause download by taskId
   static Future<void> pauseDownload(String taskId) async {
     await _ensureDownloaderInitialized();
-    
+
     try {
       await FlutterDownloader.pause(taskId: taskId);
     } catch (e) {
@@ -323,7 +352,7 @@ class FlutterLeapSdkService {
   /// Resume download by taskId
   static Future<String?> resumeDownload(String taskId) async {
     await _ensureDownloaderInitialized();
-    
+
     try {
       return await FlutterDownloader.resume(taskId: taskId);
     } catch (e) {
@@ -334,7 +363,7 @@ class FlutterLeapSdkService {
   /// Retry failed download by taskId
   static Future<String?> retryDownload(String taskId) async {
     await _ensureDownloaderInitialized();
-    
+
     try {
       return await FlutterDownloader.retry(taskId: taskId);
     } catch (e) {
@@ -345,11 +374,19 @@ class FlutterLeapSdkService {
   /// Get download status for a taskId
   static Future<DownloadTaskStatus?> getDownloadStatus(String taskId) async {
     await _ensureDownloaderInitialized();
-    
+
     try {
       final tasks = await FlutterDownloader.loadTasks();
-      final task = tasks?.firstWhere((t) => t.taskId == taskId, orElse: () => throw Exception('Task not found'));
-      return task?.status;
+      if (tasks == null) return null;
+
+      DownloadTask? task;
+      try {
+        task = tasks.firstWhere((t) => t.taskId == taskId);
+      } catch (e) {
+        return null;
+      }
+
+      return task.status;
     } catch (e) {
       return null;
     }
@@ -358,19 +395,23 @@ class FlutterLeapSdkService {
   /// Get download progress for a taskId
   static Future<DownloadProgress?> getDownloadProgress(String taskId) async {
     await _ensureDownloaderInitialized();
-    
+
     try {
       final tasks = await FlutterDownloader.loadTasks();
-      final task = tasks?.firstWhere((t) => t.taskId == taskId, orElse: () => throw Exception('Task not found'));
-      
-      if (task != null) {
-        return DownloadProgress(
-          bytesDownloaded: task.progress,
-          totalBytes: 100,
-          percentage: task.progress.toDouble(),
-        );
+      if (tasks == null) return null;
+
+      DownloadTask? task;
+      try {
+        task = tasks.firstWhere((t) => t.taskId == taskId);
+      } catch (e) {
+        return null;
       }
-      return null;
+
+      return DownloadProgress(
+        bytesDownloaded: task.progress,
+        totalBytes: 100,
+        percentage: task.progress.toDouble(),
+      );
     } catch (e) {
       return null;
     }
@@ -408,56 +449,65 @@ class FlutterLeapSdkService {
       if (await tempFile.exists()) {
         final tempFileSize = await tempFile.length();
         print('DEBUG: Temp file size: ${tempFileSize} bytes');
-        
+
         // Check if final file already exists
         if (await finalFile.exists()) {
           print('DEBUG: Final file already exists, deleting it first');
           await finalFile.delete();
         }
-        
+
         await tempFile.rename(finalFile.path);
         print('DEBUG: File renamed successfully');
-        
+
         // Verify the rename worked
         final finalExists = await finalFile.exists();
         print('DEBUG: Final file exists after rename: $finalExists');
-        
+
         if (finalExists) {
           final finalFileSize = await finalFile.length();
           print('DEBUG: Final file size: ${finalFileSize} bytes');
         }
-        
+
         return finalExists;
       } else {
         print('DEBUG: Temp file does not exist!');
-        
+
         // Check if final file already exists (maybe it was already moved?)
         if (await finalFile.exists()) {
           final finalFileSize = await finalFile.length();
-          print('DEBUG: Final file already exists with size: ${finalFileSize} bytes');
+          print(
+            'DEBUG: Final file already exists with size: ${finalFileSize} bytes',
+          );
           return true;
         }
-        
+
         return false;
       }
     } catch (e) {
       print('DEBUG: Error during finalization: $e');
       print('DEBUG: Error type: ${e.runtimeType}');
       print('DEBUG: Stack trace: ${StackTrace.current}');
-      throw DownloadException('Failed to finalize download: $e', 'FINALIZE_ERROR');
+      throw DownloadException(
+        'Failed to finalize download: $e',
+        'FINALIZE_ERROR',
+      );
     }
   }
 
   /// Get all active download tasks
   static Future<List<DownloadTask>> getActiveDownloads() async {
     await _ensureDownloaderInitialized();
-    
+
     try {
       final tasks = await FlutterDownloader.loadTasks();
-      return tasks?.where((task) => 
-        task.status == DownloadTaskStatus.running || 
-        task.status == DownloadTaskStatus.paused
-      ).toList() ?? [];
+      return tasks
+              ?.where(
+                (task) =>
+                    task.status == DownloadTaskStatus.running ||
+                    task.status == DownloadTaskStatus.paused,
+              )
+              .toList() ??
+          [];
     } catch (e) {
       return [];
     }
@@ -469,20 +519,23 @@ class FlutterLeapSdkService {
       final appDir = await getApplicationDocumentsDirectory();
       final modelFile = File('${appDir.path}/leap/$modelName');
       final exists = await modelFile.exists();
-      
+
       print('DEBUG: Checking model existence:');
       print('DEBUG: Model path: ${modelFile.path}');
       print('DEBUG: File exists: $exists');
-      
+
       if (exists) {
         final fileSize = await modelFile.length();
         print('DEBUG: File size: ${fileSize} bytes');
       }
-      
+
       return exists;
     } catch (e) {
       print('DEBUG: Error checking model existence: $e');
-      throw FlutterLeapSdkException('Failed to check model existence: $e', 'CHECK_MODEL_ERROR');
+      throw FlutterLeapSdkException(
+        'Failed to check model existence: $e',
+        'CHECK_MODEL_ERROR',
+      );
     }
   }
 
@@ -505,7 +558,10 @@ class FlutterLeapSdkService {
 
       return modelFiles;
     } catch (e) {
-      throw FlutterLeapSdkException('Failed to get downloaded models: $e', 'GET_MODELS_ERROR');
+      throw FlutterLeapSdkException(
+        'Failed to get downloaded models: $e',
+        'GET_MODELS_ERROR',
+      );
     }
   }
 
@@ -524,7 +580,9 @@ class FlutterLeapSdkService {
   }
 
   /// Download LFM2-350M model
-  static Future<String?> downloadLFM2_350M({Function(DownloadProgress)? onProgress}) async {
+  static Future<String?> downloadLFM2_350M({
+    Function(DownloadProgress)? onProgress,
+  }) async {
     return downloadModel(
       modelName: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
       onProgress: onProgress,
@@ -532,7 +590,9 @@ class FlutterLeapSdkService {
   }
 
   /// Download LFM2-700M model
-  static Future<String?> downloadLFM2_700M({Function(DownloadProgress)? onProgress}) async {
+  static Future<String?> downloadLFM2_700M({
+    Function(DownloadProgress)? onProgress,
+  }) async {
     return downloadModel(
       modelName: 'LFM2-700M-8da4w_output_8da8w-seq_4096.bundle',
       onProgress: onProgress,
@@ -540,7 +600,9 @@ class FlutterLeapSdkService {
   }
 
   /// Download LFM2-1.2B model
-  static Future<String?> downloadLFM2_1_2B({Function(DownloadProgress)? onProgress}) async {
+  static Future<String?> downloadLFM2_1_2B({
+    Function(DownloadProgress)? onProgress,
+  }) async {
     return downloadModel(
       modelName: 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle',
       onProgress: onProgress,
@@ -565,7 +627,10 @@ class FlutterLeapSdkService {
       }
       return false;
     } catch (e) {
-      throw FlutterLeapSdkException('Failed to delete model: $e', 'DELETE_MODEL_ERROR');
+      throw FlutterLeapSdkException(
+        'Failed to delete model: $e',
+        'DELETE_MODEL_ERROR',
+      );
     }
   }
 }

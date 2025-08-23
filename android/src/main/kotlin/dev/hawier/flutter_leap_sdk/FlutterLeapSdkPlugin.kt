@@ -74,22 +74,60 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     mainScope.launch {
       try {
         val modelFile = File(modelPath)
+        Log.d("FlutterLeapSDK", "=== MODEL LOADING DEBUG ===")
+        Log.d("FlutterLeapSDK", "Requested model path: $modelPath")
+        Log.d("FlutterLeapSDK", "File exists: ${modelFile.exists()}")
+        
         if (!modelFile.exists()) {
           result.error("MODEL_NOT_FOUND", "Model file not found at: $modelPath", null)
           return@launch
         }
+        
+        Log.d("FlutterLeapSDK", "File can read: ${modelFile.canRead()}")
+        Log.d("FlutterLeapSDK", "File size: ${modelFile.length()} bytes")
+        Log.d("FlutterLeapSDK", "File absolute path: ${modelFile.absolutePath}")
+        Log.d("FlutterLeapSDK", "File parent directory: ${modelFile.parentFile?.absolutePath}")
         
         if (!modelFile.canRead()) {
           result.error("MODEL_NOT_READABLE", "Cannot read model file at: $modelPath", null)
           return@launch
         }
         
-        Log.d("FlutterLeapSDK", "Loading model from: $modelPath")
+        // List parent directory contents
+        modelFile.parentFile?.let { parentDir ->
+          Log.d("FlutterLeapSDK", "Parent directory contents:")
+          parentDir.listFiles()?.forEach { file ->
+            Log.d("FlutterLeapSDK", "- ${file.name} (${file.length()} bytes, readable: ${file.canRead()})")
+          }
+        }
+        
+        Log.d("FlutterLeapSDK", "Calling LeapClient.loadModel...")
+        
+        // Unload any existing model first
+        modelRunner?.unload()
+        modelRunner = null
+        
         modelRunner = LeapClient.loadModel(modelPath)
+        Log.d("FlutterLeapSDK", "Model loaded successfully!")
         result.success("Model loaded successfully from $modelPath")
       } catch (e: Exception) {
         Log.e("FlutterLeapSDK", "Failed to load model", e)
-        result.error("MODEL_LOADING_ERROR", "Failed to load model: ${e.message}", null)
+        Log.e("FlutterLeapSDK", "Exception type: ${e.javaClass.simpleName}")
+        Log.e("FlutterLeapSDK", "Exception message: ${e.message}")
+        Log.e("FlutterLeapSDK", "Exception cause: ${e.cause}")
+        
+        // Additional debugging for potential file issues
+        val modelFile = File(modelPath)
+        Log.e("FlutterLeapSDK", "File still exists after error: ${modelFile.exists()}")
+        Log.e("FlutterLeapSDK", "File still readable after error: ${modelFile.canRead()}")
+        
+        // Provide more specific error information
+        val errorMessage = when {
+            e.message?.contains("34") == true -> "Failed to load model: Executorch Error 34 - This may be due to incompatible model format, device architecture (requires ARM64), or corrupted model file. Details: ${e.message}"
+            e.message?.contains("load error") == true -> "Failed to load model: Model loading error - ${e.message}. Check if the model is compatible with LEAP SDK ${getLeapSDKVersion()}"
+            else -> "Failed to load model: ${e.message}"
+        }
+        result.error("MODEL_LOADING_ERROR", errorMessage, null)
       }
     }
   }
@@ -220,6 +258,15 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       } catch (e: Exception) {
         result.error("UNLOAD_ERROR", "Failed to unload model: ${e.message}", null)
       }
+    }
+  }
+
+  private fun getLeapSDKVersion(): String {
+    return try {
+      // Try to get version from BuildConfig or package info
+      "0.4.0" // Current version being used
+    } catch (e: Exception) {
+      "unknown"
     }
   }
 

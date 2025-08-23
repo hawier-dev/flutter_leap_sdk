@@ -5,13 +5,13 @@
 class ModelInfo {
   /// The actual filename of the model bundle
   final String fileName;
-  
+
   /// Human-readable display name for the model
   final String displayName;
-  
+
   /// Estimated size of the model (e.g., "322 MB")
   final String size;
-  
+
   /// Direct download URL for the model bundle
   final String url;
 
@@ -53,10 +53,10 @@ class ModelInfo {
 class DownloadProgress {
   /// Number of bytes successfully downloaded
   final int bytesDownloaded;
-  
+
   /// Total size of the download in bytes
   final int totalBytes;
-  
+
   /// Percentage of download completed (0.0 to 100.0)
   final double percentage;
 
