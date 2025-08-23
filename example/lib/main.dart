@@ -82,7 +82,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _fileOperationStatus = '';
         
         if (isLoaded) {
-          _status = '✅ Model loaded and ready (${FlutterLeapSdkService.currentLoadedModel})';
+          _status = '✅ Model loaded and ready (${FlutterLeapSdkService.currentModel})';
         } else if (modelExists) {
           _status = '📁 Model downloaded, click "Load Model" to use';
         } else if (downloadedModels.isNotEmpty) {
@@ -332,7 +332,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
-                    if (_fileOperationStatus.isNotEmpty) ..[
+                    if (_fileOperationStatus.isNotEmpty) ...[                      
                       const SizedBox(height: 8),
                       Container(
                         width: double.infinity,
@@ -362,7 +362,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                     ],
-                    if (_currentDownloadTaskId != null && _downloadProgress > 0) ..[
+                    if (_currentDownloadTaskId != null && _downloadProgress > 0) ...[
                       const SizedBox(height: 12),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -394,7 +394,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   : Theme.of(context).colorScheme.primary,
                             ),
                           ),
-                          if (_downloadSpeed.isNotEmpty) ..[
+                          if (_downloadSpeed.isNotEmpty) ...[
                             const SizedBox(height: 4),
                             Text(
                               'Speed: $_downloadSpeed',
