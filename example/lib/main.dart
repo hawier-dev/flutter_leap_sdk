@@ -39,6 +39,9 @@ class _ChatScreenState extends State<ChatScreen> {
   String _fileOperationStatus = '';
   double _downloadProgress = 0.0;
   bool _isFinalizingDownload = false;
+  String _downloadSpeed = '';
+  int _downloadedBytes = 0;
+  int _totalBytes = 0;
 
   @override
   void initState() {
@@ -107,13 +110,27 @@ class _ChatScreenState extends State<ChatScreen> {
         modelName: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
         onProgress: (progress) {
           setState(() {
+            _downloadProgress = progress.percentage;
+            _downloadedBytes = progress.downloaded;
+            _totalBytes = progress.total;
+            _downloadSpeed = progress.speed;
+            
             if (progress.percentage >= 100.0) {
               _status = '✅ Download completed!';
               _currentDownloadTaskId = null;
+              _isFinalizingDownload = false;
+              _downloadProgress = 0.0;
+              _downloadSpeed = '';
               Future.delayed(const Duration(milliseconds: 500), _checkModelStatus);
+            } else if (progress.percentage >= 99.0) {
+              _status = '🔄 Finalizing download...';
+              _isFinalizingDownload = true;
             } else {
               final percent = progress.percentage.toStringAsFixed(1);
-              _status = '📥 Downloading LFM2-350M: $percent%';
+              final downloadedMB = (_downloadedBytes / 1024 / 1024).toStringAsFixed(1);
+              final totalMB = (_totalBytes / 1024 / 1024).toStringAsFixed(1);
+              _status = '📥 Downloading: $percent% ($downloadedMB/$totalMB MB)';
+              _isFinalizingDownload = false;
             }
           });
         },
@@ -129,6 +146,9 @@ class _ChatScreenState extends State<ChatScreen> {
     } finally {
       setState(() {
         _isLoading = false;
+        _downloadProgress = 0.0;
+        _downloadSpeed = '';
+        _isFinalizingDownload = false;
       });
     }
   }
@@ -140,10 +160,16 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _status = '⏹️ Download cancelled';
           _currentDownloadTaskId = null;
+          _downloadProgress = 0.0;
+          _downloadSpeed = '';
+          _isFinalizingDownload = false;
         });
       } catch (e) {
         setState(() {
           _status = '❌ Failed to cancel download';
+          _downloadProgress = 0.0;
+          _downloadSpeed = '';
+          _isFinalizingDownload = false;
         });
       }
     }
@@ -192,25 +218,30 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _generateResponse() async {
     if (_messageController.text.isEmpty) return;
 
+    final userMessage = _messageController.text;
+    _messageController.clear();
     setState(() {
+      _hasText = false;
       _isLoading = true;
       _response = '';
+      _fileOperationStatus = 'Generating response...';
     });
 
     try {
-      final response = await FlutterLeapSdkService.generateResponse(
-        _messageController.text,
-      );
+      final response = await FlutterLeapSdkService.generateResponse(userMessage);
       setState(() {
         _response = response;
+        _fileOperationStatus = '';
       });
     } catch (e) {
       setState(() {
         _response = 'Error: $e';
+        _fileOperationStatus = '';
       });
     } finally {
       setState(() {
         _isLoading = false;
+        _fileOperationStatus = '';
       });
     }
   }
@@ -218,28 +249,35 @@ class _ChatScreenState extends State<ChatScreen> {
   void _generateStreamingResponse() {
     if (_messageController.text.isEmpty) return;
 
+    final userMessage = _messageController.text;
+    _messageController.clear();
     setState(() {
+      _hasText = false;
       _isLoading = true;
       _response = '';
+      _fileOperationStatus = 'Streaming response...';
     });
 
-    FlutterLeapSdkService.generateResponseStream(
-      _messageController.text,
-    ).listen(
+    FlutterLeapSdkService.generateResponseStream(userMessage).listen(
       (chunk) {
         setState(() {
           _response += chunk;
+          if (_response.isNotEmpty) {
+            _fileOperationStatus = 'Streaming in progress...';
+          }
         });
       },
       onError: (error) {
         setState(() {
           _response = 'Streaming error: $error';
           _isLoading = false;
+          _fileOperationStatus = '';
         });
       },
       onDone: () {
         setState(() {
           _isLoading = false;
+          _fileOperationStatus = '';
         });
       },
     );
@@ -294,6 +332,80 @@ class _ChatScreenState extends State<ChatScreen> {
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
+                    if (_fileOperationStatus.isNotEmpty) ..[
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(8.0),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _fileOperationStatus,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (_currentDownloadTaskId != null && _downloadProgress > 0) ..[
+                      const SizedBox(height: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Download Progress',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              Text(
+                                '${_downloadProgress.toStringAsFixed(1)}%',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          LinearProgressIndicator(
+                            value: _downloadProgress / 100,
+                            backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              _isFinalizingDownload
+                                  ? Colors.orange
+                                  : Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          if (_downloadSpeed.isNotEmpty) ..[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Speed: $_downloadSpeed',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -331,6 +443,34 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ],
             ),
+            // File Operation Status
+            if (_fileOperationStatus.isNotEmpty)
+              Card(
+                elevation: 1,
+                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _fileOperationStatus,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             // Chat Interface
             const SizedBox(height: 24),
             Text(
