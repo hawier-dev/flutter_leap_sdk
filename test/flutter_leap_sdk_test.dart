@@ -59,12 +59,16 @@ void main() {
       expect(methodCalls[0].arguments['modelPath'], testPath);
     });
 
-    test('generateResponse throws exception when model not loaded', () async {
-      // Reset the internal state to ensure model is not loaded
-      expect(
-        () async => await FlutterLeapSdkService.generateResponse('test message'),
-        throwsA(isA<ModelNotLoadedException>()),
-      );
+    test('generateResponse works when model is loaded', () async {
+      // First load a model
+      await FlutterLeapSdkService.loadModel(modelPath: '/test/model.bundle');
+      
+      // Then generate response
+      final result = await FlutterLeapSdkService.generateResponse('test message');
+      
+      expect(result, 'Test response from AI');
+      expect(methodCalls.length, 2); // loadModel + generateResponse
+      expect(methodCalls[1].method, 'generateResponse');
     });
 
     test('ModelInfo creates correctly from map', () {

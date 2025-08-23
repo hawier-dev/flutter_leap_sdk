@@ -2,6 +2,13 @@
 
 A Flutter plugin for integrating Liquid AI's LEAP SDK, enabling on-device deployment of small language models in Flutter applications.
 
+## Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|--------|
+| Android  | ✅ Supported | API 31+, arm64-v8a |
+| iOS      | 🚧 Coming Soon | Planned for future release |
+
 ## Features
 
 - ✅ Model downloading with progress tracking
