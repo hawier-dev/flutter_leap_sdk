@@ -45,13 +45,21 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _checkModelStatus() async {
     try {
+      setState(() {
+        _status = 'Checking model status...';
+      });
+
+      print('DEBUG: Starting model status check');
       final isLoaded = await FlutterLeapSdkService.checkModelLoaded();
+      print('DEBUG: Model loaded status: $isLoaded');
       
       // Also check if model file exists
       final modelExists = await FlutterLeapSdkService.checkModelExists('LFM2-350M-8da4w_output_8da8w-seq_4096.bundle');
+      print('DEBUG: Model file exists: $modelExists');
       
       // Get list of all downloaded models
       final downloadedModels = await FlutterLeapSdkService.getDownloadedModels();
+      print('DEBUG: Downloaded models: $downloadedModels');
       
       setState(() {
         _isModelLoaded = isLoaded;
@@ -61,9 +69,15 @@ class _MyHomePageState extends State<MyHomePage> {
         if (downloadedModels.isNotEmpty) {
           statusText += '\nFiles: ${downloadedModels.join(', ')}';
         }
+        statusText += '\n\n[DEBUG INFO]';
+        statusText += '\nSDK isLoaded: $isLoaded';
+        statusText += '\nFile exists: $modelExists';
+        statusText += '\nDownloaded count: ${downloadedModels.length}';
         _status = statusText;
       });
+      print('DEBUG: Status updated: $statusText');
     } catch (e) {
+      print('DEBUG: Error in _checkModelStatus: $e');
       setState(() {
         _status = 'Error checking model status: $e';
       });
@@ -77,12 +91,18 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
     try {
+      print('DEBUG: Starting model download');
       final taskId = await FlutterLeapSdkService.downloadLFM2_350M(
         onProgress: (progress) {
+          print('DEBUG: Download progress: ${progress.percentage}%');
           setState(() {
             if (progress.percentage >= 100.0) {
-              _status = 'Download completed! Model ready to load.';
+              _status = 'Download completed! Checking file...';
               _currentDownloadTaskId = null;
+              // Auto-check status after download
+              Future.delayed(const Duration(milliseconds: 500), () {
+                _checkModelStatus();
+              });
             } else {
               _status = 'Downloading: ${progress.percentage.toStringAsFixed(2)}%';
             }
@@ -92,11 +112,15 @@ class _MyHomePageState extends State<MyHomePage> {
       
       if (taskId != null) {
         _currentDownloadTaskId = taskId;
+        print('DEBUG: Download task started: $taskId');
         setState(() {
           _status = 'Download started (Task: ${taskId.substring(0, 8)}...)';
         });
+      } else {
+        print('DEBUG: Download task ID is null!');
       }
     } catch (e) {
+      print('DEBUG: Download error: $e');
       setState(() {
         _status = 'Download failed: $e';
       });
@@ -130,16 +154,36 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
     try {
+      print('DEBUG: Attempting to load model: LFM2-350M-8da4w_output_8da8w-seq_4096.bundle');
+      
+      // First check if file exists before trying to load
+      final modelExists = await FlutterLeapSdkService.checkModelExists('LFM2-350M-8da4w_output_8da8w-seq_4096.bundle');
+      print('DEBUG: Model file exists before load: $modelExists');
+      
+      if (!modelExists) {
+        setState(() {
+          _status = 'ERROR: Model file not found! Please download first.';
+        });
+        return;
+      }
+
       final result = await FlutterLeapSdkService.loadModel(
         modelPath: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
       );
+      print('DEBUG: Model load result: $result');
+      
+      // Verify the model is actually loaded
+      final isLoaded = await FlutterLeapSdkService.checkModelLoaded();
+      print('DEBUG: Model loaded verification: $isLoaded');
+      
       setState(() {
-        _isModelLoaded = true;
-        _status = result;
+        _isModelLoaded = isLoaded;
+        _status = 'Model load result: $result\nVerification: Model loaded = $isLoaded';
       });
     } catch (e) {
+      print('DEBUG: Model load error: $e');
       setState(() {
-        _status = 'Failed to load model: $e';
+        _status = 'Failed to load model: $e\n\nFull error details: ${e.toString()}';
       });
     } finally {
       setState(() {
@@ -214,9 +258,41 @@ class _MyHomePageState extends State<MyHomePage> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  _status,
-                  style: Theme.of(context).textTheme.bodyLarge,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Status',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(8.0),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        _status,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontFamily: 'monospace'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ElevatedButton(
+                          onPressed: _checkModelStatus,
+                          child: const Text('Refresh Status'),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Last updated: ${DateTime.now().toString().substring(11, 19)}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),

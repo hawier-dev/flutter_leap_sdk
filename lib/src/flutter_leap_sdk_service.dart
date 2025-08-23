@@ -225,55 +225,74 @@ class FlutterLeapSdkService {
       try {
         await _ensureDownloaderInitialized();
         final tasks = await FlutterDownloader.loadTasks();
-        final task = tasks?.firstWhere((t) => t.taskId == taskId, orElse: () => throw Exception('Task not found'));
         
-        if (task != null) {
-          final progress = DownloadProgress(
-            bytesDownloaded: task.progress,
-            totalBytes: 100,
-            percentage: task.progress.toDouble(),
-          );
-          
-          onProgress(progress);
-          
-          // Handle completion - finalize the download
-          if (task.status == DownloadTaskStatus.complete) {
-            timer.cancel();
-            try {
-              // Notify that finalization is starting
-              final finalizingProgress = DownloadProgress(
+        if (tasks == null || tasks.isEmpty) {
+          print('DEBUG: No tasks found, cancelling timer');
+          timer.cancel();
+          return;
+        }
+        
+        final task = tasks.firstWhere((t) => t.taskId == taskId, orElse: () => null);
+        
+        if (task == null) {
+          print('DEBUG: Task $taskId not found, cancelling timer');
+          timer.cancel();
+          return;
+        }
+
+        print('DEBUG: Task status: ${task.status}, progress: ${task.progress}');
+        
+        final progress = DownloadProgress(
+          bytesDownloaded: task.progress,
+          totalBytes: 100,
+          percentage: task.progress.toDouble(),
+        );
+        
+        onProgress(progress);
+        
+        // Handle completion - finalize the download
+        if (task.status == DownloadTaskStatus.complete) {
+          timer.cancel();
+          print('DEBUG: Download completed, starting finalization');
+          try {
+            // Notify that finalization is starting
+            final finalizingProgress = DownloadProgress(
+              bytesDownloaded: 100,
+              totalBytes: 100,
+              percentage: 100.0,
+            );
+            onProgress(finalizingProgress);
+            
+            // Extract original filename from temp filename
+            final tempFileName = task.filename;
+            print('DEBUG: Temp filename: $tempFileName');
+            if (tempFileName != null && tempFileName.endsWith('.temp')) {
+              final originalFileName = tempFileName.replaceAll('.temp', '');
+              print('DEBUG: Finalizing to: $originalFileName');
+              final success = await finalizeDownload(originalFileName);
+              print('DEBUG: Finalization result: $success');
+              
+              // Send final completion progress
+              final completionProgress = DownloadProgress(
                 bytesDownloaded: 100,
                 totalBytes: 100,
                 percentage: 100.0,
               );
-              onProgress(finalizingProgress);
-              
-              // Extract original filename from temp filename
-              final tempFileName = task.filename;
-              if (tempFileName != null && tempFileName.endsWith('.temp')) {
-                final originalFileName = tempFileName.replaceAll('.temp', '');
-                await finalizeDownload(originalFileName);
-                
-                // Send final completion progress
-                final completionProgress = DownloadProgress(
-                  bytesDownloaded: 100,
-                  totalBytes: 100,
-                  percentage: 100.0,
-                );
-                onProgress(completionProgress);
-              }
-            } catch (e) {
-              // Even if finalization fails, at least notify completion
-              print('Failed to finalize download: $e');
+              onProgress(completionProgress);
             }
-          }
-          // Stop monitoring when failed or canceled
-          else if (task.status == DownloadTaskStatus.failed ||
-                   task.status == DownloadTaskStatus.canceled) {
-            timer.cancel();
+          } catch (e) {
+            // Even if finalization fails, at least notify completion
+            print('DEBUG: Failed to finalize download: $e');
           }
         }
+        // Stop monitoring when failed or canceled
+        else if (task.status == DownloadTaskStatus.failed ||
+                 task.status == DownloadTaskStatus.canceled) {
+          print('DEBUG: Task failed or cancelled: ${task.status}');
+          timer.cancel();
+        }
       } catch (e) {
+        print('DEBUG: Error in progress monitoring: $e');
         timer.cancel();
       }
     });
@@ -361,29 +380,70 @@ class FlutterLeapSdkService {
   static Future<bool> finalizeDownload(String fileName) async {
     try {
       final appDir = await getApplicationDocumentsDirectory();
+      final leapDir = Directory('${appDir.path}/leap');
       final tempFile = File('${appDir.path}/leap/$fileName.temp');
       final finalFile = File('${appDir.path}/leap/$fileName');
 
       print('DEBUG: Finalizing download:');
+      print('DEBUG: App directory: ${appDir.path}');
+      print('DEBUG: LEAP directory exists: ${await leapDir.exists()}');
       print('DEBUG: Temp file: ${tempFile.path}');
       print('DEBUG: Final file: ${finalFile.path}');
       print('DEBUG: Temp file exists: ${await tempFile.exists()}');
+
+      // List all files in leap directory for debugging
+      if (await leapDir.exists()) {
+        final files = await leapDir.list().toList();
+        print('DEBUG: Files in leap directory:');
+        for (var file in files) {
+          if (file is File) {
+            final size = await file.length();
+            print('DEBUG: - ${file.path} (${size} bytes)');
+          } else {
+            print('DEBUG: - ${file.path} (directory)');
+          }
+        }
+      }
 
       if (await tempFile.exists()) {
         final tempFileSize = await tempFile.length();
         print('DEBUG: Temp file size: ${tempFileSize} bytes');
         
+        // Check if final file already exists
+        if (await finalFile.exists()) {
+          print('DEBUG: Final file already exists, deleting it first');
+          await finalFile.delete();
+        }
+        
         await tempFile.rename(finalFile.path);
         print('DEBUG: File renamed successfully');
         
-        final finalFileSize = await finalFile.length();
-        print('DEBUG: Final file size: ${finalFileSize} bytes');
-        return true;
+        // Verify the rename worked
+        final finalExists = await finalFile.exists();
+        print('DEBUG: Final file exists after rename: $finalExists');
+        
+        if (finalExists) {
+          final finalFileSize = await finalFile.length();
+          print('DEBUG: Final file size: ${finalFileSize} bytes');
+        }
+        
+        return finalExists;
+      } else {
+        print('DEBUG: Temp file does not exist!');
+        
+        // Check if final file already exists (maybe it was already moved?)
+        if (await finalFile.exists()) {
+          final finalFileSize = await finalFile.length();
+          print('DEBUG: Final file already exists with size: ${finalFileSize} bytes');
+          return true;
+        }
+        
+        return false;
       }
-      print('DEBUG: Temp file does not exist!');
-      return false;
     } catch (e) {
       print('DEBUG: Error during finalization: $e');
+      print('DEBUG: Error type: ${e.runtimeType}');
+      print('DEBUG: Stack trace: ${StackTrace.current}');
       throw DownloadException('Failed to finalize download: $e', 'FINALIZE_ERROR');
     }
   }
