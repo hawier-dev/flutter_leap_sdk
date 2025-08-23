@@ -197,7 +197,7 @@ class FlutterLeapSdkService {
 
   /// Monitor download progress for a specific task
   static void _monitorDownloadProgress(String taskId, Function(DownloadProgress) onProgress) {
-    Timer.periodic(const Duration(seconds: 1), (timer) async {
+    Timer.periodic(const Duration(milliseconds: 250), (timer) async {
       try {
         await _ensureDownloaderInitialized();
         final tasks = await FlutterDownloader.loadTasks();
