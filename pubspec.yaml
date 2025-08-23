@@ -30,6 +30,8 @@ flutter:
       android:
         package: dev.hawier.flutter_leap_sdk
         pluginClass: FlutterLeapSdkPlugin
+      ios:
+        pluginClass: FlutterLeapSdkPlugin
 
   # To add assets to your package, add an assets section, like this:
   # assets:
