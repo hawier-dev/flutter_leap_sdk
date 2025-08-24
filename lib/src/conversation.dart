@@ -449,10 +449,30 @@ class Conversation {
           );
           break;
         } else {
-          // For now, treat all chunks as regular text chunks
-          // TODO: Parse and detect reasoning chunks and function calls from native
-          fullResponse += chunk;
-          yield MessageResponseChunk(chunk);
+          // Parse chunk type - native SDK should send structured chunk data
+          if (chunk.startsWith('<reasoning>')) {
+            final reasoningContent = chunk.replaceFirst('<reasoning>', '').replaceFirst('</reasoning>', '');
+            fullReasoning += reasoningContent;
+            yield MessageResponseReasoningChunk(reasoningContent);
+          } else if (chunk.startsWith('<function_call>')) {
+            // Parse function call from chunk
+            // Expected format: <function_call>{"name": "functionName", "arguments": {...}}</function_call>
+            try {
+              final jsonStr = chunk.replaceFirst('<function_call>', '').replaceFirst('</function_call>', '');
+              final Map<String, dynamic> callData = json.decode(jsonStr);
+              final functionCall = LeapFunctionCall.fromMap(callData);
+              functionCalls.add(functionCall);
+              yield MessageResponseFunctionCalls([functionCall]);
+            } catch (e) {
+              // Fallback: treat as regular chunk if parsing fails
+              fullResponse += chunk;
+              yield MessageResponseChunk(chunk);
+            }
+          } else {
+            // Regular text chunk
+            fullResponse += chunk;
+            yield MessageResponseChunk(chunk);
+          }
         }
       }
 

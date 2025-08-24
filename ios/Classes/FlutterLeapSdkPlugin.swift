@@ -637,9 +637,9 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         // Store function schema for later use
         conversationFunctions[conversationId]![functionName] = functionSchema
         
-        // TODO: Register function with native LEAP SDK conversation
-        // This will require calling conversation.registerFunction() with appropriate LeapFunction
-        // For now, we store the schema and will handle calls through executeFunction
+        // Register function with native LEAP SDK conversation
+        let leapFunction = createLeapFunction(name: functionName, schema: functionSchema)
+        conversation.registerFunction(leapFunction)
         
         print("Flutter LEAP SDK iOS: Registered function '\(functionName)' for conversation: \(conversationId)")
         result("Function registered successfully")
@@ -661,10 +661,43 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         // Remove from stored functions
         conversationFunctions[conversationId]?.removeValue(forKey: functionName)
         
-        // TODO: Unregister from native LEAP SDK conversation
+        // Unregister from native LEAP SDK conversation
+        conversation.unregisterFunction(functionName)
         
         print("Flutter LEAP SDK iOS: Unregistered function '\(functionName)' from conversation: \(conversationId)")
         result("Function unregistered successfully")
+    }
+    
+    private func createLeapFunction(name: String, schema: [String: Any]) -> LeapFunction {
+        // Convert Flutter function schema to native LEAP SDK LeapFunction
+        let description = schema["description"] as? String ?? ""
+        let parameters = schema["parameters"] as? [String: Any] ?? [:]
+        
+        return LeapFunction(name: name, description: description) { [weak self] args in
+            // This callback will be called by the native LEAP SDK when the function needs to be executed
+            // We need to bridge this back to Flutter for actual execution
+            return await self?.executeFlutterFunction(name: name, arguments: args) ?? ["error": "Plugin deallocated"]
+        }
+    }
+    
+    private func executeFlutterFunction(name: String, arguments: [String: Any]) async -> [String: Any] {
+        // Bridge function execution back to Flutter
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { [weak self] in
+                self?.channel?.invokeMethod("executeFunctionCallback", arguments: [
+                    "functionName": name,
+                    "arguments": arguments
+                ]) { result in
+                    if let resultDict = result as? [String: Any] {
+                        continuation.resume(returning: resultDict)
+                    } else if let error = result as? FlutterError {
+                        continuation.resume(returning: ["error": error.message ?? "Unknown error"])
+                    } else {
+                        continuation.resume(returning: ["error": "Invalid response"])
+                    }
+                }
+            }
+        }
     }
     
     private func executeFunction(call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -695,14 +728,9 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         
         print("Flutter LEAP SDK iOS: Executing function '\(functionName)' with \(arguments.count) arguments")
         
-        // For now, return success with a placeholder result
-        // TODO: Implement actual function execution logic by calling Flutter callback
-        let executionResult: [String: Any] = [
-            "success": true,
-            "result": "Function executed successfully",
-            "functionName": functionName,
-            "arguments": arguments
-        ]
+        // Execute function through native LEAP SDK
+        // This will trigger the function callback registered with the conversation
+        let executionResult = conversation.executeFunction(functionName, arguments: arguments)
         
         result(executionResult)
     }

@@ -12,9 +12,12 @@ import ai.liquid.leap.message.MessageResponse
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.onEach
 import android.util.Log
+import android.os.Handler
+import android.os.Looper
 import java.io.File
 import java.util.concurrent.Executors
 import androidx.annotation.WorkerThread
+import ai.liquid.leap.LeapFunction
 
 class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
   private lateinit var channel : MethodChannel
@@ -458,6 +461,23 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
   }
   
   // Helper function to convert MessageResponse to Map for Flutter
+  private fun extractFunctionCalls(messageResponse: MessageResponse): List<Map<String, Any>>? {
+    // Extract function calls from MessageResponse if available
+    // This depends on the native LEAP SDK structure
+    return try {
+      val functionCalls = messageResponse.functionCalls
+      functionCalls?.map { call ->
+        mapOf(
+          "name" to call.name,
+          "arguments" to call.arguments
+        )
+      }
+    } catch (e: Exception) {
+      Log.w("FlutterLeapSDK", "Could not extract function calls: ${e.message}")
+      null
+    }
+  }
+
   private fun messageResponseToMap(response: MessageResponse): Map<String, Any?> {
     return when (response) {
       is MessageResponse.Chunk -> {
@@ -483,7 +503,7 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
             "role" to "assistant",
             "content" to response.fullMessage?.content ?: "",
             "reasoningContent" to null, // TODO: Extract reasoning from fullMessage
-            "functionCalls" to null // TODO: Extract function calls
+            "functionCalls" to extractFunctionCalls(messageResponse) // Extract function calls from response
           ),
           "finishReason" to when (response.finishReason) {
             // Map native finish reasons to our enum
@@ -768,9 +788,9 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       // Store function schema for later use
       conversationFunctions[conversationId]!![functionName] = functionSchema
 
-      // TODO: Register function with native LEAP SDK conversation
-      // This will require calling conversation.registerFunction() with appropriate LeapFunction
-      // For now, we store the schema and will handle calls through executeFunction
+      // Register function with native LEAP SDK conversation
+      val leapFunction = createLeapFunction(functionName, functionSchema)
+      conversation.registerFunction(leapFunction)
 
       Log.d("FlutterLeapSDK", "Registered function '$functionName' for conversation: $conversationId")
       result.success("Function registered successfully")
@@ -792,7 +812,8 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       // Remove from stored functions
       conversationFunctions[conversationId]?.remove(functionName)
 
-      // TODO: Unregister from native LEAP SDK conversation
+      // Unregister from native LEAP SDK conversation
+      conversation.unregisterFunction(functionName)
       
       Log.d("FlutterLeapSDK", "Unregistered function '$functionName' from conversation: $conversationId")
       result.success("Function unregistered successfully")
@@ -800,6 +821,46 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     } catch (e: Exception) {
       Log.e("FlutterLeapSDK", "Error unregistering function: ${e.message}")
       result.error("FUNCTION_UNREGISTRATION_ERROR", "Error unregistering function: ${e.message}", null)
+    }
+  }
+
+  private fun createLeapFunction(name: String, schema: Map<String, Any>): LeapFunction {
+    // Convert Flutter function schema to native LEAP SDK LeapFunction
+    val description = schema["description"] as? String ?: ""
+    val parameters = schema["parameters"] as? Map<String, Any> ?: mapOf()
+    
+    return LeapFunction(name, description) { args ->
+      // This callback will be called by the native LEAP SDK when the function needs to be executed
+      // We need to bridge this back to Flutter for actual execution
+      executeFlutterFunction(name, args)
+    }
+  }
+  
+  private suspend fun executeFlutterFunction(functionName: String, arguments: Map<String, Any>): Map<String, Any> {
+    // Bridge function execution back to Flutter
+    return try {
+      val result = CompletableDeferred<Map<String, Any>>()
+      
+      Handler(Looper.getMainLooper()).post {
+        methodChannel.invokeMethod("executeFunctionCallback", mapOf(
+          "functionName" to functionName,
+          "arguments" to arguments
+        ), object : MethodChannel.Result {
+          override fun success(data: Any?) {
+            result.complete(data as? Map<String, Any> ?: mapOf("error" to "Invalid response"))
+          }
+          override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+            result.complete(mapOf("error" to errorMessage))
+          }
+          override fun notImplemented() {
+            result.complete(mapOf("error" to "Function not implemented"))
+          }
+        })
+      }
+      
+      result.await()
+    } catch (e: Exception) {
+      mapOf("error" to e.message)
     }
   }
 
@@ -828,14 +889,9 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
 
       Log.d("FlutterLeapSDK", "Executing function '$functionName' with ${arguments.size} arguments")
 
-      // For now, return success with a placeholder result
-      // TODO: Implement actual function execution logic by calling Flutter callback
-      val executionResult = mapOf(
-        "success" to true,
-        "result" to "Function executed successfully",
-        "functionName" to functionName,
-        "arguments" to arguments
-      )
+      // Execute function through native LEAP SDK
+      // This will trigger the function callback registered with the conversation
+      val executionResult = conversation.executeFunction(functionName, arguments)
 
       result.success(executionResult)
 

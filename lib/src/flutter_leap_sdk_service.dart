@@ -40,6 +40,9 @@ class FlutterLeapSdkService {
     _dio.options.connectTimeout = const Duration(seconds: 30);
     _dio.options.receiveTimeout = const Duration(minutes: 10);
     
+    // Set up method call handler for function callbacks
+    _channel.setMethodCallHandler(_handleMethodCall);
+    
     LeapLogger.info('FlutterLeapSdkService initialized');
   }
 
@@ -771,6 +774,59 @@ class FlutterLeapSdkService {
     } on PlatformException catch (e) {
       LeapLogger.error('Failed to generate conversation streaming response', e);
       throw GenerationException('Failed to generate streaming response: ${e.message}', e.code);
+    }
+  }
+
+  /// Handle method calls from native platforms (e.g., function execution callbacks)
+  Future<dynamic> _handleMethodCall(MethodCall call) async {
+    try {
+      switch (call.method) {
+        case 'executeFunctionCallback':
+          return await _handleFunctionExecution(call.arguments);
+        default:
+          throw PlatformException(
+            code: 'UNIMPLEMENTED',
+            message: 'Method ${call.method} not implemented',
+          );
+      }
+    } catch (e) {
+      LeapLogger.error('Error handling method call ${call.method}', e);
+      return {'error': e.toString()};
+    }
+  }
+
+  /// Handle function execution callback from native platforms
+  Future<Map<String, dynamic>> _handleFunctionExecution(dynamic arguments) async {
+    try {
+      final args = arguments as Map<String, dynamic>;
+      final functionName = args['functionName'] as String;
+      final functionArgs = args['arguments'] as Map<String, dynamic>;
+
+      LeapLogger.info('Executing function callback: $functionName');
+
+      // Find the conversation and execute the function
+      // This requires looking through all conversations to find the one with this function
+      for (final conversation in _conversations.values) {
+        if (conversation.hasFunction(functionName)) {
+          final functionCall = LeapFunctionCall(
+            name: functionName,
+            arguments: functionArgs,
+          );
+          final result = await conversation.executeFunction(functionCall);
+          LeapLogger.info('Function $functionName executed successfully');
+          return result;
+        }
+      }
+
+      // Function not found in any conversation
+      throw GenerationException(
+        'Function "$functionName" not found in any active conversation',
+        'FUNCTION_NOT_FOUND',
+      );
+
+    } catch (e) {
+      LeapLogger.error('Failed to execute function callback', e);
+      return {'error': e.toString()};
     }
   }
 }
