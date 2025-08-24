@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
   s.description      = <<-DESC
   A Flutter plugin for integrating Liquid AI's LEAP SDK, enabling on-device deployment of small language models in Flutter applications.
                        DESC
-  s.homepage         = 'https://github.com/mbadyl/flutter_leap_sdk'
+  s.homepage         = 'https://github.com/hawier-dev/flutter_leap_sdk'
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Mikolaj Badyl' => 'mikolajbady0@gmail.com' }
   s.source           = { :path => '.' }

@@ -34,4 +34,4 @@ jobs:
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./doc/api
-        cname: flutter-leap-sdk-docs.pages.dev
+        # cname: your-custom-domain.com  # Optional: uncomment and set your custom domain

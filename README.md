@@ -256,7 +256,7 @@ This package is built on top of Liquid AI's official LEAP SDK. For more informat
 - Swift 5.9+
 - CocoaPods for dependency management
 
-If you encounter iOS-specific issues, please [report them](https://github.com/mbadyl/flutter_leap_sdk/issues) with device/OS details.
+If you encounter iOS-specific issues, please [report them](https://github.com/hawier-dev/flutter_leap_sdk/issues) with device/OS details.
 
 ## Troubleshooting
 
@@ -286,7 +286,7 @@ If you encounter iOS-specific issues, please [report them](https://github.com/mb
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit Pull Requests or [file issues](https://github.com/mbadyl/flutter_leap_sdk/issues).
+Contributions are welcome! Please feel free to submit Pull Requests or [file issues](https://github.com/hawier-dev/flutter_leap_sdk/issues).
 
 ## License
 
