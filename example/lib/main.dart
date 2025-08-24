@@ -662,6 +662,7 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
           _scrollToBottom();
         } else if (response is MessageResponseFunctionCalls) {
           functionCalls.addAll(response.functionCalls);
+          print('🔧 Function calls received: ${response.functionCalls.map((c) => c.name)}');
           // Show function call indicators
           setState(() {
             if (_messages.isEmpty || _messages.last.role != MessageRole.assistant) {
