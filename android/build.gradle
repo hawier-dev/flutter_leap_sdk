@@ -1,5 +1,5 @@
 group 'dev.hawier.flutter_leap_sdk'
-version '0.1.0'
+version '0.1.1'
 
 buildscript {
     ext.kotlin_version = '1.9.21'
