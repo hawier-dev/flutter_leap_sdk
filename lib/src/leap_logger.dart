@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 /// Secure logging system for Flutter LEAP SDK
 /// Prevents sensitive information leakage in production builds
 class LeapLogger {
-  static bool _isInitialized = false;
   static LogLevel _minLevel = kDebugMode ? LogLevel.debug : LogLevel.warning;
   
   /// Initialize logger with custom settings
@@ -14,7 +13,6 @@ class LeapLogger {
     if (minLevel != null) {
       _minLevel = minLevel;
     }
-    _isInitialized = true;
   }
   
   /// Set minimum log level

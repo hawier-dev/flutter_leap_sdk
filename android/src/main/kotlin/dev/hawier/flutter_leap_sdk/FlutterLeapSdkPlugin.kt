@@ -164,8 +164,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         try {
           val modelFile = File(modelPath)
           
-          // Secure logging - only log essential info in debug builds
-          Log.d("FlutterLeapSDK", "Loading model: ${modelFile.name}")
           
           // Validate file existence and readability
           val validationResult = validateModelFile(modelFile)
@@ -176,8 +174,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
             return@launch
           }
           
-          // Log file info in debug builds only
-          Log.d("FlutterLeapSDK", "File size: ${formatFileSize(modelFile.length())}")
           
           // Unload existing model on background thread
           modelRunner?.unload()
@@ -195,10 +191,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
           }
           
         } catch (e: Exception) {
-          // Error logging
-          Log.e("FlutterLeapSDK", "Model loading failed: ${e.javaClass.simpleName}")
-          Log.e("FlutterLeapSDK", "Error details: ${e.message}")
-          
           val errorMessage = formatLoadingError(e)
           withContext(Dispatchers.Main) {
             result.error("MODEL_LOADING_ERROR", errorMessage, null)
@@ -310,7 +302,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         val nativeOptions = createNativeGenerationOptions(generationOptions)
         var fullResponse = ""
         
-        Log.d("FlutterLeapSDK", "Generating response (${message.length} chars)")
         
         conversation.generateResponse(message, nativeOptions)
           .onEach { response ->
@@ -322,11 +313,10 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
                 fullResponse += response.reasoning
               }
               is MessageResponse.Complete -> {
-                Log.d("FlutterLeapSDK", "Generation completed (${fullResponse.length} chars)")
+                // Generation completed
               }
               else -> {
-                // Log other response types
-                Log.d("FlutterLeapSDK", "Response type: ${response.javaClass.simpleName}")
+                // Handle other response types
               }
             }
           }
@@ -337,8 +327,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         }
         
       } catch (e: Exception) {
-        Log.e("FlutterLeapSDK", "Error generating response: ${e.javaClass.simpleName}")
-        Log.e("FlutterLeapSDK", "Error details: ${e.message}")
         
         withContext(Dispatchers.Main) {
           result.error("GENERATION_ERROR", "Error generating response: ${e.message ?: "Unknown error"}", null)
@@ -374,7 +362,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
           result.success("Streaming started")
         }
         
-        Log.d("FlutterLeapSDK", "Starting stream (${message.length} chars)")
         
         val conversation = runner.createConversation(systemPrompt)
         val nativeOptions = createNativeGenerationOptions(generationOptions)
@@ -402,11 +389,9 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
                 launch(Dispatchers.Main) {
                   streamingSink?.success("<STREAM_END>")
                 }
-                Log.d("FlutterLeapSDK", "Streaming completed")
               }
               else -> {
-                // Log other response types
-                Log.d("FlutterLeapSDK", "Stream response type: ${response.javaClass.simpleName}")
+                // Handle other response types
               }
             }
           }
@@ -414,10 +399,8 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
           
       } catch (e: Exception) {
         if (e is CancellationException) {
-          Log.d("FlutterLeapSDK", "Streaming was cancelled")
+          // Streaming was cancelled
         } else {
-          Log.e("FlutterLeapSDK", "Error in streaming: ${e.javaClass.simpleName}")
-          Log.e("FlutterLeapSDK", "Streaming error details: ${e.message}")
           launch(Dispatchers.Main) {
             streamingSink?.error("STREAMING_ERROR", "Error generating streaming response: ${e.message ?: "Unknown error"}", null)
           }
@@ -434,7 +417,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     activeStreamingJob?.cancel()
     activeStreamingJob = null
     
-    Log.d("FlutterLeapSDK", "Streaming cancelled")
     
     result.success("Streaming cancelled")
   }
@@ -450,14 +432,11 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         conversationGenerationOptions.clear()
         conversationFunctions.clear()
         
-        Log.d("FlutterLeapSDK", "Model unloaded successfully")
         
         withContext(Dispatchers.Main) {
           result.success("Model unloaded successfully")
         }
       } catch (e: Exception) {
-        Log.e("FlutterLeapSDK", "Failed to unload model: ${e.javaClass.simpleName}")
-        Log.e("FlutterLeapSDK", "Unload error details: ${e.message}")
         
         withContext(Dispatchers.Main) {
           result.error("UNLOAD_ERROR", "Failed to unload model: ${e.message ?: "Unknown error"}", null)
@@ -594,7 +573,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
           result.success("Streaming started")
         }
         
-        Log.d("FlutterLeapSDK", "Starting structured stream (${message.length} chars)")
         
         val conversation = runner.createConversation(systemPrompt)
         val nativeOptions = createNativeGenerationOptions(generationOptions)
@@ -611,9 +589,7 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
             
             lastResponseTime = System.currentTimeMillis()
             responseCount++
-            Log.d("FlutterLeapSDK", "Raw response type: ${response::class.simpleName} (count: $responseCount)")
             val responseMap = messageResponseToMap(response)
-            Log.d("FlutterLeapSDK", "Sending structured response: $responseMap")
             
             launch(Dispatchers.Main) {
               streamingSink?.success(responseMap)
@@ -624,11 +600,9 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
               launch(Dispatchers.Main) {
                 streamingSink?.success("<STREAM_END>")
               }
-              Log.d("FlutterLeapSDK", "Structured streaming completed with $responseCount responses")
             }
           }
           .catch { error ->
-            Log.e("FlutterLeapSDK", "Generation stream error: ${error.message}")
             launch(Dispatchers.Main) {
               streamingSink?.error("GENERATION_ERROR", "Generation stopped unexpectedly: ${error.message}", null)
             }
@@ -640,7 +614,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
           delay(30000) // Wait 30 seconds
           val timeSinceLastResponse = System.currentTimeMillis() - lastResponseTime
           if (timeSinceLastResponse > 30000 && !shouldCancelStreaming && responseCount > 0) {
-            Log.w("FlutterLeapSDK", "Generation appears to have stalled after $responseCount responses")
             launch(Dispatchers.Main) {
               streamingSink?.error("GENERATION_TIMEOUT", "Generation stopped unexpectedly", null)
             }
@@ -650,10 +623,8 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
           
       } catch (e: Exception) {
         if (e is CancellationException) {
-          Log.d("FlutterLeapSDK", "Structured streaming was cancelled")
+          // Structured streaming was cancelled
         } else {
-          Log.e("FlutterLeapSDK", "Error in structured streaming: ${e.javaClass.simpleName}")
-          Log.e("FlutterLeapSDK", "Structured streaming error details: ${e.message}")
           launch(Dispatchers.Main) {
             streamingSink?.error("STREAMING_ERROR", "Error generating structured streaming response: ${e.message ?: "Unknown error"}", null)
           }
@@ -680,7 +651,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       modelRunner = null
     } catch (e: Exception) {
       // Ignore cleanup errors
-      Log.w("FlutterLeapSDK", "Error during cleanup: ${e.message}")
     }
     
     // Shutdown executor
@@ -689,7 +659,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     // Cancel coroutine scope
     mainScope.cancel()
     
-    Log.d("FlutterLeapSDK", "Plugin detached and cleaned up")
   }
   
   // MARK: - Conversation Management
@@ -706,7 +675,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       return
     }
     
-    Log.d("FlutterLeapSDK", "Creating conversation: $conversationId")
     
     try {
       // Create conversation
@@ -720,7 +688,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       
       result.success("Conversation created successfully")
     } catch (e: Exception) {
-      Log.e("FlutterLeapSDK", "Error creating conversation: ${e.message}")
       result.error("CONVERSATION_ERROR", "Error creating conversation: ${e.message}", null)
     }
   }
@@ -737,7 +704,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       return
     }
     
-    Log.d("FlutterLeapSDK", "Generating conversation response (${message.length} chars)")
     
     mainScope.launch(Dispatchers.IO) {
       try {
@@ -756,10 +722,10 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
                 fullResponse += response.reasoning
               }
               is MessageResponse.Complete -> {
-                Log.d("FlutterLeapSDK", "Conversation generation completed (${fullResponse.length} chars)")
+                // Conversation generation completed
               }
               else -> {
-                Log.d("FlutterLeapSDK", "Response type: ${response.javaClass.simpleName}")
+                // Handle other response types
               }
             }
           }
@@ -771,7 +737,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         
       } catch (e: Exception) {
         withContext(Dispatchers.Main) {
-          Log.e("FlutterLeapSDK", "Error generating conversation response: ${e.message}")
           result.error("GENERATION_ERROR", "Error generating response: ${e.message}", null)
         }
       }
@@ -790,12 +755,11 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       return
     }
     
-    Log.d("FlutterLeapSDK", "Starting conversation streaming response (${message.length} chars)")
     result.success("Streaming started")
     
     // Only cancel if not in the same conversation - allow continuation
     if (activeStreamingJob != null) {
-      Log.d("FlutterLeapSDK", "Previous streaming still active - allowing continuation")
+      // Previous streaming still active - allowing continuation
     } else {
       shouldCancelStreaming = false
     }
@@ -827,35 +791,29 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
                 }
               }
               is MessageResponse.FunctionCalls -> {
-                Log.d("FlutterLeapSDK", "Processing function calls: ${response.functionCalls.size}")
                 val responseMap = messageResponseToMap(response)
-                Log.d("FlutterLeapSDK", "Sending function calls: $responseMap")
                 launch(Dispatchers.Main) {
                   streamingSink?.success(responseMap)
                 }
               }
               is MessageResponse.Complete -> {
-                Log.d("FlutterLeapSDK", "Processing complete response")
                 val responseMap = messageResponseToMap(response)
-                Log.d("FlutterLeapSDK", "Sending complete response: $responseMap")
                 launch(Dispatchers.Main) {
                   streamingSink?.success(responseMap)
                   streamingSink?.success("<STREAM_END>")
-                  Log.d("FlutterLeapSDK", "Conversation streaming completed")
                 }
               }
               else -> {
-                Log.d("FlutterLeapSDK", "Stream response type: ${response.javaClass.simpleName}")
+                // Handle other response types
               }
             }
           }
           .collect { }
           
       } catch (e: CancellationException) {
-        Log.d("FlutterLeapSDK", "Conversation streaming was cancelled")
+        // Conversation streaming was cancelled
       } catch (e: Exception) {
         withContext(Dispatchers.Main) {
-          Log.e("FlutterLeapSDK", "Error in conversation streaming: ${e.message}")
           streamingSink?.error("STREAMING_ERROR", "Error generating streaming response: ${e.message}", null)
         }
       } finally {
@@ -875,7 +833,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     conversationGenerationOptions.remove(conversationId)
     conversationFunctions.remove(conversationId)
     
-    Log.d("FlutterLeapSDK", "Disposed conversation: $conversationId")
     result.success("Conversation disposed successfully")
   }
 
@@ -903,11 +860,9 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       // Register function with native LEAP SDK conversation
       conversation.registerFunction(leapFunction)
 
-      Log.d("FlutterLeapSDK", "Registered function '$functionName' for conversation: $conversationId")
       result.success("Function registered successfully")
 
     } catch (e: Exception) {
-      Log.e("FlutterLeapSDK", "Error registering function: ${e.message}")
       result.error("FUNCTION_REGISTRATION_ERROR", "Error registering function: ${e.message}", null)
     }
   }
@@ -926,11 +881,9 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       // Note: LEAP SDK v0.4.0 Conversation interface doesn't have unregisterFunction method
       // Functions are automatically unregistered when conversation is disposed
       
-      Log.d("FlutterLeapSDK", "Unregistered function '$functionName' from conversation: $conversationId")
       result.success("Function unregistered successfully")
 
     } catch (e: Exception) {
-      Log.e("FlutterLeapSDK", "Error unregistering function: ${e.message}")
       result.error("FUNCTION_UNREGISTRATION_ERROR", "Error unregistering function: ${e.message}", null)
     }
   }
@@ -1024,7 +977,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         return
       }
 
-      Log.d("FlutterLeapSDK", "Executing function '$functionName' with ${arguments.size} arguments")
 
       // Bridge function execution back to Flutter
       mainScope.launch {
@@ -1042,7 +994,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       }
 
     } catch (e: Exception) {
-      Log.e("FlutterLeapSDK", "Error executing function: ${e.message}")
       result.error("FUNCTION_EXECUTION_ERROR", "Error executing function: ${e.message}", null)
     }
   }

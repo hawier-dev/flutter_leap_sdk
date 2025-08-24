@@ -32,18 +32,13 @@ class FlutterLeapSdkService {
   }
   
   FlutterLeapSdkService._internal() {
-    // Initialize logging
     LeapLogger.initialize();
     
-    // Initialize Dio
     _dio = Dio();
     _dio.options.connectTimeout = const Duration(seconds: 30);
     _dio.options.receiveTimeout = const Duration(minutes: 10);
     
-    // Set up method call handler for function callbacks
     _channel.setMethodCallHandler(_handleMethodCall);
-    
-    LeapLogger.info('FlutterLeapSdkService initialized');
   }
 
   // Available LEAP models from Liquid AI
@@ -86,7 +81,6 @@ class FlutterLeapSdkService {
   
   Future<void> _ensureInitialized() async {
     // Dio is initialized in constructor
-    LeapLogger.info('Service initialization complete');
   }
 
   /// Load a model from the specified path
@@ -123,34 +117,13 @@ class FlutterLeapSdkService {
         fullPath = '${appDir.path}/leap/$fileName';
       }
 
-      LeapLogger.modelOp('Loading model', details: 'path: $fullPath');
-
-      // Use cached file operations instead of direct I/O
       final file = File(fullPath);
       final exists = await file.exists();
-      
-      LeapLogger.fileOp('check_exists', fullPath, details: 'exists: $exists');
 
       if (!exists) {
-        LeapLogger.warning('Model file does not exist or is empty: $fullPath');
-        
-        // List available files for debugging
-        final appDir = await getApplicationDocumentsDirectory();
-        final leapDir = Directory('${appDir.path}/leap');
-        final availableFiles = leapDir.existsSync() ? 
-            leapDir.listSync().whereType<File>().map((f) => f.path.split('/').last).toList() : <String>[];
-        
-        if (availableFiles.isNotEmpty) {
-          LeapLogger.info('Available models: ${availableFiles.join(', ')}');
-        } else {
-          LeapLogger.warning('No model files found in leap directory');
-        }
-        
         throw ModelLoadingException('Model file not found at: $fullPath', 'MODEL_NOT_FOUND');
       }
 
-      final size = await file.length();
-      LeapLogger.fileOp('file_info', fullPath, details: '${(size / 1024 / 1024).toStringAsFixed(1)} MB');
 
       final String result = await _channel.invokeMethod('loadModel', {
         'modelPath': fullPath,
@@ -160,20 +133,17 @@ class FlutterLeapSdkService {
       _isModelLoaded = true;
       _currentLoadedModel = fullPath.split('/').last;
       
-      LeapLogger.modelOp('Model loaded successfully', modelName: _currentLoadedModel);
       return result;
       
     } on PlatformException catch (e) {
       _isModelLoaded = false;
       _currentLoadedModel = '';
       
-      LeapLogger.error('Model loading failed', e);
       throw ModelLoadingException('Failed to load model: ${e.message}', e.code);
     } catch (e) {
       _isModelLoaded = false;
       _currentLoadedModel = '';
       
-      LeapLogger.error('Unexpected error during model loading', e);
       rethrow;
     }
   }
@@ -187,15 +157,12 @@ class FlutterLeapSdkService {
     try {
       final String result = await _channel.invokeMethod('unloadModel');
       
-      final previousModel = _currentLoadedModel;
       _isModelLoaded = false;
       _currentLoadedModel = '';
       
-      LeapLogger.modelOp('Model unloaded successfully', modelName: previousModel);
       return result;
       
     } on PlatformException catch (e) {
-      LeapLogger.error('Failed to unload model', e);
       throw FlutterLeapSdkException(
         'Failed to unload model: ${e.message}',
         e.code,
@@ -213,11 +180,9 @@ class FlutterLeapSdkService {
       final bool result = await _channel.invokeMethod('isModelLoaded');
       _isModelLoaded = result;
       
-      LeapLogger.debug('Model loaded status: $result');
       return result;
       
     } on PlatformException catch (e) {
-      LeapLogger.error('Failed to check model status', e);
       throw FlutterLeapSdkException(
         'Failed to check model status: ${e.message}',
         e.code,
@@ -245,19 +210,15 @@ class FlutterLeapSdkService {
     }
 
     try {
-      LeapLogger.info('Generating response (${message.length} chars)');
-      
       final String result = await _channel.invokeMethod('generateResponse', {
         'message': message,
         'systemPrompt': systemPrompt ?? '',
         'generationOptions': generationOptions?.toMap(),
       });
       
-      LeapLogger.info('Response generated (${result.length} chars)');
       return result;
       
     } on PlatformException catch (e) {
-      LeapLogger.error('Failed to generate response', e);
       throw GenerationException(
         'Failed to generate response: ${e.message}',
         e.code,
@@ -285,8 +246,6 @@ class FlutterLeapSdkService {
     }
 
     try {
-      LeapLogger.info('Starting streaming response (${message.length} chars)');
-      
       await _channel.invokeMethod('generateResponseStream', {
         'message': message,
         'systemPrompt': systemPrompt ?? '',
@@ -294,10 +253,8 @@ class FlutterLeapSdkService {
       });
 
       await for (final data in _streamChannel.receiveBroadcastStream()) {
-        LeapLogger.info('Raw stream data received: $data (type: ${data.runtimeType})');
         if (data is String) {
           if (data == '<STREAM_END>') {
-            LeapLogger.info('Streaming response completed');
             break;
           } else {
             yield data;
@@ -306,7 +263,6 @@ class FlutterLeapSdkService {
       }
       
     } on PlatformException catch (e) {
-      LeapLogger.error('Failed to generate streaming response', e);
       throw GenerationException(
         'Failed to generate streaming response: ${e.message}',
         e.code,
@@ -318,9 +274,7 @@ class FlutterLeapSdkService {
   static Future<void> cancelStreaming() async {
     try {
       await _channel.invokeMethod('cancelStreaming');
-      LeapLogger.info('Streaming cancelled');
     } on PlatformException catch (e) {
-      LeapLogger.error('Failed to cancel streaming', e);
       throw FlutterLeapSdkException(
         'Failed to cancel streaming: ${e.message}',
         e.code,
@@ -335,18 +289,14 @@ class FlutterLeapSdkService {
     required Map<String, dynamic> functionSchema,
   }) async {
     try {
-      LeapLogger.info('Registering function "$functionName" for conversation: $conversationId');
-      
       final String result = await _channel.invokeMethod('registerFunction', {
         'conversationId': conversationId,
         'functionName': functionName,
         'functionSchema': functionSchema,
       });
       
-      LeapLogger.info('Function "$functionName" registered successfully');
       return result;
     } on PlatformException catch (e) {
-      LeapLogger.error('Failed to register function "$functionName"', e);
       throw FlutterLeapSdkException(
         'Failed to register function: ${e.message}',
         e.code,
@@ -494,7 +444,6 @@ class FlutterLeapSdkService {
         final tempFile = File(tempPath);
         if (await tempFile.exists()) {
           await tempFile.rename(filePath);
-          LeapLogger.info('Download completed: $fileName');
         }
         
         _activeDownloads.remove(downloadId);
@@ -510,7 +459,6 @@ class FlutterLeapSdkService {
         rethrow;
       }
     } catch (e) {
-      LeapLogger.error('Download failed', e);
       throw DownloadException('Failed to download model: $e', 'DOWNLOAD_ERROR');
     }
   }
@@ -525,7 +473,6 @@ class FlutterLeapSdkService {
     if (cancelToken != null) {
       cancelToken.cancel('Download cancelled by user');
       _activeDownloads.remove(downloadId);
-      LeapLogger.info('Download cancelled: $downloadId');
     }
   }
 
@@ -545,17 +492,12 @@ class FlutterLeapSdkService {
       final appDir = await getApplicationDocumentsDirectory();
       final modelPath = '${appDir.path}/leap/$modelName';
       
-      // Use cached file operations
       final file = File(modelPath);
       final exists = await file.exists();
       
-      LeapLogger.fileOp('check_model_exists', modelPath, 
-        details: 'exists: $exists, size: ${exists ? '${(await file.length() / 1024 / 1024).toStringAsFixed(1)} MB' : '0 MB'}');
-
       return exists && (exists ? await file.length() > 0 : false);
       
     } catch (e) {
-      LeapLogger.error('Error checking model existence: $modelName', e);
       throw FlutterLeapSdkException(
         'Failed to check model existence: $e',
         'CHECK_MODEL_ERROR',
@@ -569,16 +511,13 @@ class FlutterLeapSdkService {
       final appDir = await getApplicationDocumentsDirectory();
       final leapDirPath = '${appDir.path}/leap';
       
-      // Use background file operations
       final leapDir = Directory(leapDirPath);
       final modelFiles = leapDir.existsSync() ? 
           leapDir.listSync().whereType<File>().map((f) => f.path.split('/').last).toList() : <String>[];
       
-      LeapLogger.info('Found ${modelFiles.length} downloaded models: ${modelFiles.join(', ')}');
       return modelFiles;
       
     } catch (e) {
-      LeapLogger.error('Failed to get downloaded models', e);
       throw FlutterLeapSdkException(
         'Failed to get downloaded models: $e',
         'GET_MODELS_ERROR',
@@ -619,18 +558,14 @@ class FlutterLeapSdkService {
         if (_currentLoadedModel == fileName) {
           _currentLoadedModel = '';
           _isModelLoaded = false;
-          LeapLogger.modelOp('Unloaded deleted model', modelName: fileName);
         }
         
-        LeapLogger.fileOp('delete_model', modelPath, details: 'success');
         return true;
       }
       
-      LeapLogger.warning('Model file does not exist: $fileName');
       return false;
       
     } catch (e) {
-      LeapLogger.error('Failed to delete model: $fileName', e);
       throw FlutterLeapSdkException(
         'Failed to delete model: $e',
         'DELETE_MODEL_ERROR',
@@ -655,8 +590,6 @@ class FlutterLeapSdkService {
     
     // Dispose all conversations
     _conversations.clear();
-    
-    LeapLogger.info('FlutterLeapSdkService disposed');
   }
   
   /// Get service statistics for debugging
@@ -712,11 +645,9 @@ class FlutterLeapSdkService {
       
       _conversations[conversationId] = conversation;
       
-      LeapLogger.info('Created conversation: $conversationId');
       return conversation;
       
     } catch (e) {
-      LeapLogger.error('Failed to create conversation', e);
       throw FlutterLeapSdkException('Failed to create conversation: $e', 'CONVERSATION_ERROR');
     }
   }
@@ -751,10 +682,7 @@ class FlutterLeapSdkService {
       // Remove from local map
       _conversations.remove(conversationId);
       
-      LeapLogger.info('Disposed conversation: $conversationId');
-      
     } catch (e) {
-      LeapLogger.error('Failed to dispose conversation: $conversationId', e);
       throw FlutterLeapSdkException('Failed to dispose conversation: $e', 'CONVERSATION_ERROR');
     }
   }
@@ -777,7 +705,6 @@ class FlutterLeapSdkService {
       return result;
       
     } on PlatformException catch (e) {
-      LeapLogger.error('Failed to generate conversation response', e);
       throw GenerationException('Failed to generate response: ${e.message}', e.code);
     }
   }
@@ -798,7 +725,6 @@ class FlutterLeapSdkService {
       });
 
       await for (final data in _streamChannel.receiveBroadcastStream()) {
-        LeapLogger.info('Raw stream data received: $data (type: ${data.runtimeType})');
         if (data is String) {
           if (data == '<STREAM_END>') {
             break;
@@ -830,7 +756,6 @@ class FlutterLeapSdkService {
       }
       
     } on PlatformException catch (e) {
-      LeapLogger.error('Failed to generate conversation streaming response', e);
       throw GenerationException('Failed to generate streaming response: ${e.message}', e.code);
     }
   }
@@ -843,19 +768,14 @@ class FlutterLeapSdkService {
     GenerationOptions? generationOptions,
   }) async* {
     try {
-      LeapLogger.info('🔥 DART DEBUG: Calling generateConversationResponseStream for: "$message"');
-      
       await _channel.invokeMethod('generateConversationResponseStream', {
         'conversationId': conversationId,
         'message': message,
         'history': history.map((m) => m.toMap()).toList(),
         'generationOptions': generationOptions?.toMap(),
       });
-      LeapLogger.info('🔥 DART DEBUG: Method call completed, starting receiveBroadcastStream...');
 
       await for (final data in _streamChannel.receiveBroadcastStream()) {
-        LeapLogger.info('Raw stream data received: $data (type: ${data.runtimeType})');
-        
         // Handle error data specially
         if (data is Map && data.containsKey('error')) {
           final errorMap = Map<String, dynamic>.from(data);
@@ -863,7 +783,6 @@ class FlutterLeapSdkService {
           final errorMessage = errorMap['message'] as String? ?? 'Unknown error occurred';
           
           if (errorCode == 'GENERATION_TIMEOUT' || errorMessage.contains('stopped unexpectedly')) {
-            LeapLogger.warning('Generation stopped unexpectedly: $errorMessage');
             throw GenerationException('Generation stopped unexpectedly', errorCode);
           } else {
             throw GenerationException(errorMessage, errorCode);
@@ -885,7 +804,6 @@ class FlutterLeapSdkService {
         } else if (data is Map) {
           // Handle structured responses from native - cast to Map<String, dynamic>
           final dataMap = Map<String, dynamic>.from(data);
-          LeapLogger.info('Received structured response: $dataMap');
           final type = dataMap['type'] as String?;
           switch (type) {
             case 'chunk':
@@ -901,7 +819,6 @@ class FlutterLeapSdkService {
               final functionCalls = functionCallsData.map((callData) => 
                 LeapFunctionCall.fromMap(Map<String, dynamic>.from(callData as Map))
               ).toList();
-              LeapLogger.info('Parsed ${functionCalls.length} function calls: ${functionCalls.map((c) => c.name)}');
               yield MessageResponseFunctionCalls(functionCalls);
               break;
             case 'complete':
@@ -925,8 +842,6 @@ class FlutterLeapSdkService {
       }
       
     } on PlatformException catch (e) {
-      LeapLogger.error('Failed to generate structured conversation streaming response', e);
-      
       // Handle specific timeout and generation errors
       if (e.code == 'GENERATION_TIMEOUT' || e.code == 'GENERATION_ERROR' || 
           (e.message != null && e.message!.contains('stopped unexpectedly'))) {
@@ -950,7 +865,6 @@ class FlutterLeapSdkService {
           );
       }
     } catch (e) {
-      LeapLogger.error('Error handling method call ${call.method}', e);
       return {'error': e.toString()};
     }
   }
@@ -962,7 +876,6 @@ class FlutterLeapSdkService {
       final functionName = args['functionName'] as String;
       final functionArgs = args['arguments'] as Map<String, dynamic>;
 
-      LeapLogger.info('Executing function callback: $functionName');
 
       // Find the conversation and execute the function
       // This requires looking through all conversations to find the one with this function
@@ -973,7 +886,6 @@ class FlutterLeapSdkService {
             arguments: functionArgs,
           );
           final result = await conversation.executeFunction(functionCall);
-          LeapLogger.info('Function $functionName executed successfully');
           return result;
         }
       }
@@ -985,7 +897,6 @@ class FlutterLeapSdkService {
       );
 
     } catch (e) {
-      LeapLogger.error('Failed to execute function callback', e);
       return {'error': e.toString()};
     }
   }

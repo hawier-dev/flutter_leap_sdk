@@ -31,7 +31,6 @@ void main() {
       await FlutterLeapSdkService.loadModel(modelPath: '/test/model.bundle');
 
       stopwatch.stop();
-      print('loadModel took: ${stopwatch.elapsedMilliseconds}ms');
 
       // Assert performance threshold
       expect(stopwatch.elapsedMilliseconds, lessThan(100));
@@ -49,9 +48,6 @@ void main() {
       }
 
       stopwatch.stop();
-      print(
-        '10 generateResponse calls took: ${stopwatch.elapsedMilliseconds}ms',
-      );
 
       // Average should be reasonable
       final avgTime = stopwatch.elapsedMilliseconds / 10;

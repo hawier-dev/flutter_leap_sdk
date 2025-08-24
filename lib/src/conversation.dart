@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'flutter_leap_sdk_service.dart';
 import 'models.dart';
 import 'exceptions.dart';
-import 'leap_logger.dart';
 
 /// Represents a conversation session with persistent history and context.
 ///
@@ -41,7 +40,6 @@ class Conversation {
       _history.add(ChatMessage.system(systemPrompt));
     }
     
-    LeapLogger.info('Created conversation: $id');
   }
 
 
@@ -76,19 +74,16 @@ class Conversation {
       _history.add(ChatMessage.system(systemPrompt));
     }
     
-    LeapLogger.info('Updated system prompt for conversation: $id');
   }
 
   /// Update generation options for this conversation
   void updateGenerationOptions(GenerationOptions? options) {
     _generationOptions = options;
-    LeapLogger.info('Updated generation options for conversation: $id');
   }
 
   /// Add a message to the conversation history
   void addMessage(ChatMessage message) {
     _history.add(message);
-    LeapLogger.info('Added ${message.role.name} message to conversation: $id');
   }
 
   /// Register a function for the model to call
@@ -102,10 +97,8 @@ class Conversation {
         functionName: function.name,
         functionSchema: function.getSchema(),
       );
-      LeapLogger.info('Registered function "${function.name}" for conversation: $id');
     } catch (e) {
       _functions.remove(function.name);
-      LeapLogger.error('Failed to register function "${function.name}"', e);
       rethrow;
     }
   }
@@ -118,9 +111,7 @@ class Conversation {
         functionName: functionName,
       );
       _functions.remove(functionName);
-      LeapLogger.info('Unregistered function "$functionName" from conversation: $id');
     } catch (e) {
-      LeapLogger.error('Failed to unregister function "$functionName"', e);
       rethrow;
     }
   }
@@ -139,12 +130,9 @@ class Conversation {
     }
 
     try {
-      LeapLogger.info('Executing function "${functionCall.name}" with ${functionCall.arguments.length} arguments');
       final result = await function.implementation(functionCall.arguments);
-      LeapLogger.info('Function "${functionCall.name}" executed successfully');
       return result;
     } catch (e) {
-      LeapLogger.error('Function "${functionCall.name}" execution failed', e);
       rethrow;
     }
   }
@@ -169,7 +157,6 @@ class Conversation {
       final userMsg = ChatMessage.user(userMessage);
       addMessage(userMsg);
 
-      LeapLogger.info('Generating response for conversation: $id (${userMessage.length} chars)');
 
       // Generate response using the service
       final response = await FlutterLeapSdkService.generateConversationResponse(
@@ -183,7 +170,6 @@ class Conversation {
       final assistantMsg = ChatMessage.assistant(response);
       addMessage(assistantMsg);
 
-      LeapLogger.info('Generated response for conversation: $id (${response.length} chars)');
       
       return response;
       
@@ -212,7 +198,6 @@ class Conversation {
       final userMsg = ChatMessage.user(userMessage);
       addMessage(userMsg);
 
-      LeapLogger.info('Starting streaming response for conversation: $id (${userMessage.length} chars)');
 
       String fullResponse = '';
       bool hasReceivedAnyResponse = false;
@@ -235,12 +220,10 @@ class Conversation {
         addMessage(assistantMsg);
       } else if (!hasReceivedAnyResponse) {
         // Stream ended without any response - likely stopped unexpectedly
-        LeapLogger.warning('Streaming ended without any response for conversation: $id');
         final assistantMsg = ChatMessage.assistant('[Generation stopped unexpectedly]');
         addMessage(assistantMsg);
       }
 
-      LeapLogger.info('Completed streaming response for conversation: $id (${fullResponse.length} chars)');
       
     } finally {
       _isGenerating = false;
@@ -256,7 +239,6 @@ class Conversation {
       _history.add(systemMessage);
     }
     
-    LeapLogger.info('Cleared history for conversation: $id');
   }
 
   /// Remove the last message from the conversation
@@ -270,7 +252,6 @@ class Conversation {
     final lastMessage = nonSystemMessages.last;
     _history.remove(lastMessage);
     
-    LeapLogger.info('Removed last ${lastMessage.role.name} message from conversation: $id');
     return lastMessage;
   }
 
@@ -362,7 +343,6 @@ class Conversation {
       conversation._history.add(message);
     }
     
-    LeapLogger.info('Created conversation from history: $id (${history.length} messages)');
     return conversation;
   }
 
@@ -402,9 +382,8 @@ class Conversation {
     if (_isGenerating) {
       try {
         await FlutterLeapSdkService.cancelStreaming();
-        LeapLogger.info('Cancelled generation for conversation: $id');
       } catch (e) {
-        LeapLogger.error('Error cancelling generation', e);
+        // Ignore cancellation errors
       } finally {
         _isGenerating = false;  // Always reset flag
       }
@@ -431,7 +410,6 @@ class Conversation {
       final userMsg = ChatMessage.user(userMessage);
       addMessage(userMsg);
 
-      LeapLogger.info('Generating structured response for conversation: $id (${userMessage.length} chars)');
 
       String fullResponse = '';
       String fullReasoning = '';
@@ -477,7 +455,6 @@ class Conversation {
       
       // If stream ended without completion response and we have some content, create completion
       if (!hasReceivedAnyResponse || (fullResponse.isNotEmpty && !_history.any((m) => m.content == fullResponse))) {
-        LeapLogger.warning('Generation ended unexpectedly for conversation: $id - creating completion response');
         
         if (fullResponse.isNotEmpty || functionCalls.isNotEmpty) {
           final assistantMsg = ChatMessage.assistant(
@@ -496,10 +473,8 @@ class Conversation {
         }
       }
 
-      LeapLogger.info('Completed structured response for conversation: $id (${fullResponse.length} chars)');
       
     } catch (e) {
-      LeapLogger.error('Error in structured generation for conversation: $id', e);
       rethrow;
     } finally {
       _isGenerating = false;
@@ -516,7 +491,6 @@ class Conversation {
     );
     addMessage(resultsMessage);
     
-    LeapLogger.info('Added function results to conversation: $id (${results.length} results)');
   }
 
 

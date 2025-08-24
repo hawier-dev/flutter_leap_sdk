@@ -11,7 +11,7 @@ Pod::Spec.new do |s|
                        DESC
   s.homepage         = 'https://github.com/mbadyl/flutter_leap_sdk'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'Maciej Badyl' => 'your.email@example.com' }
+  s.author           = { 'Mikolaj Badyl' => 'mikolajbady0@gmail.com' }
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'

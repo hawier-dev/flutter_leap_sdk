@@ -20,8 +20,7 @@ class FlutterLeapSdkException implements Exception {
 /// This can occur due to invalid model paths, corrupted files,
 /// insufficient memory, or incompatible model formats.
 class ModelLoadingException extends FlutterLeapSdkException {
-  const ModelLoadingException(String message, String? code)
-    : super(message, code);
+  const ModelLoadingException(super.message, super.code);
 }
 
 /// Exception thrown when attempting operations on an unloaded model.
@@ -38,8 +37,7 @@ class ModelNotLoadedException extends FlutterLeapSdkException {
 /// Can occur due to model errors, invalid input, memory issues,
 /// or interrupted generation processes.
 class GenerationException extends FlutterLeapSdkException {
-  const GenerationException(String message, String? code)
-    : super(message, code);
+  const GenerationException(super.message, super.code);
 }
 
 /// Exception thrown during model download operations.
@@ -47,5 +45,5 @@ class GenerationException extends FlutterLeapSdkException {
 /// Covers network errors, storage issues, invalid URLs,
 /// and other download-related failures.
 class DownloadException extends FlutterLeapSdkException {
-  const DownloadException(String message, String? code) : super(message, code);
+  const DownloadException(super.message, super.code);
 }
