@@ -674,19 +674,38 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
           });
           _scrollToBottom();
         } else if (response is MessageResponseComplete) {
-          // Function calling is now handled automatically by the library
+          // Check if this was a function call completion
+          if (response.finishReason == GenerationFinishReason.functionCall) {
+            setState(() {
+              String finalDisplay = assistantResponse;
+              finalDisplay += '\n\n✅ Functions executed successfully! ';
+              finalDisplay += 'The results have been added to the conversation. ';
+              finalDisplay += 'You can now ask follow-up questions about the results.';
+              _messages[_messages.length - 1] = ChatMessage.assistant(finalDisplay);
+            });
+          }
           break;
         }
       }
     } catch (e) {
       setState(() {
-        _messages.add(ChatMessage.assistant('Error: ${e.toString()}'));
+        String errorMsg = 'Error: ${e.toString()}';
+        
+        // Detect common generation issues
+        if (e.toString().toLowerCase().contains('generation') && 
+            e.toString().toLowerCase().contains('progress')) {
+          errorMsg = '⚠️ Generation was interrupted. This might happen due to rapid consecutive requests. Please try again.';
+        } else if (e.toString().toLowerCase().contains('stop')) {
+          errorMsg = '⚠️ Generation was stopped. This can happen during system optimization. Please try again.';
+        }
+        
+        _messages.add(ChatMessage.assistant(errorMsg));
+      });
+    } finally {
+      setState(() {
+        _isTyping = false;
       });
     }
-    
-    setState(() {
-      _isTyping = false;
-    });
     _scrollToBottom();
   }
 
