@@ -8,16 +8,27 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import ai.liquid.leap.LeapClient
 import ai.liquid.leap.ModelRunner
+import ai.liquid.leap.ModelLoadingOptions
+import ai.liquid.leap.GenerationOptions
+import ai.liquid.leap.Conversation
 import ai.liquid.leap.message.MessageResponse
+import ai.liquid.leap.message.ChatMessage
+import ai.liquid.leap.message.ChatMessageContent
+import ai.liquid.leap.message.GenerationFinishReason
+import ai.liquid.leap.message.GenerationStats
+import ai.liquid.leap.function.LeapFunction
+import ai.liquid.leap.function.LeapFunctionParameter
+import ai.liquid.leap.function.LeapFunctionParameterType
+import ai.liquid.leap.function.LeapFunctionCall
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.catch
 import android.util.Log
 import android.os.Handler
 import android.os.Looper
 import java.io.File
 import java.util.concurrent.Executors
 import androidx.annotation.WorkerThread
-import ai.liquid.leap.LeapFunction
 
 class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
   private lateinit var channel : MethodChannel
@@ -29,11 +40,11 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
   private var shouldCancelStreaming = false
   
   // Conversation management
-  private val conversations = mutableMapOf<String, ai.liquid.leap.Conversation>()
+  private val conversations = mutableMapOf<String, Conversation>()
   private val conversationGenerationOptions = mutableMapOf<String, Map<String, Any>>()
   
   // Function calling support
-  private val conversationFunctions = mutableMapOf<String, MutableMap<String, Map<String, Any>>>()
+  private val conversationFunctions = mutableMapOf<String, MutableMap<String, LeapFunction>>()
 
   override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     channel = MethodChannel(flutterPluginBinding.binaryMessenger, "flutter_leap_sdk")
@@ -132,11 +143,18 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
   // Background thread pool for file I/O operations
   private val fileIOExecutor = Executors.newSingleThreadExecutor()
   
-  // Helper function to convert ModelLoadingOptions (currently unused by native SDK)
-  private fun createNativeModelLoadingOptions(options: Map<String, Any>?): ai.liquid.leap.ModelLoadingOptions? {
-    // Note: Native LEAP SDK may not support all these options yet
-    // This is prepared for future compatibility
-    return null // For now, use default loading
+  // Helper function to convert ModelLoadingOptions
+  private fun createNativeModelLoadingOptions(options: Map<String, Any>?): ModelLoadingOptions? {
+    if (options == null) return null
+    
+    return ModelLoadingOptions.build {
+      options["randomSeed"]?.let { 
+        if (it is Number) randomSeed = it.toLong()
+      }
+      options["cpuThreads"]?.let { 
+        if (it is Number) cpuThreads = it.toInt() 
+      }
+    }
   }
 
   private fun loadModel(modelPath: String, options: Map<String, Any>?, result: Result) {
@@ -165,8 +183,11 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
           modelRunner?.unload()
           modelRunner = null
           
+          // Create loading options
+          val loadingOptions = createNativeModelLoadingOptions(options)
+          
           // Load new model
-          modelRunner = LeapClient.loadModel(modelPath)
+          modelRunner = LeapClient.loadModel(modelPath, loadingOptions)
           
           // Switch back to main thread for result
           withContext(Dispatchers.Main) {
@@ -243,10 +264,10 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
   )
 
   // Helper function to convert Dart GenerationOptions to native GenerationOptions
-  private fun createNativeGenerationOptions(options: Map<String, Any>?): ai.liquid.leap.GenerationOptions? {
+  private fun createNativeGenerationOptions(options: Map<String, Any>?): GenerationOptions? {
     if (options == null) return null
     
-    return ai.liquid.leap.GenerationOptions().apply {
+    return GenerationOptions.build {
       options["temperature"]?.let { 
         if (it is Number) temperature = it.toFloat()
       }
@@ -258,9 +279,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       }
       options["repetitionPenalty"]?.let { 
         if (it is Number) repetitionPenalty = it.toFloat() 
-      }
-      options["maxTokens"]?.let { 
-        if (it is Number) maxTokens = it.toInt() 
       }
       options["jsonSchema"]?.let { 
         if (it is String) jsonSchemaConstraint = it
@@ -301,11 +319,7 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
                 fullResponse += response.text
               }
               is MessageResponse.ReasoningChunk -> {
-                val reasoningString = response.toString()
-                val textPattern = Regex("ReasoningChunk\\(.*text=([\\s\\S]*)\\)", RegexOption.DOT_MATCHES_ALL)
-                val match = textPattern.find(reasoningString)
-                val extractedText = match?.groupValues?.get(1) ?: ""
-                fullResponse += extractedText
+                fullResponse += response.reasoning
               }
               is MessageResponse.Complete -> {
                 Log.d("FlutterLeapSDK", "Generation completed (${fullResponse.length} chars)")
@@ -378,13 +392,9 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
                 }
               }
               is MessageResponse.ReasoningChunk -> {
-                val reasoningString = response.toString()
-                val textPattern = Regex("ReasoningChunk\\(.*text=([\\s\\S]*)\\)", RegexOption.DOT_MATCHES_ALL)
-                val match = textPattern.find(reasoningString)
-                val extractedText = match?.groupValues?.get(1) ?: ""
-                if (extractedText.isNotEmpty()) {
+                if (response.reasoning.isNotEmpty()) {
                   launch(Dispatchers.Main) {
-                    streamingSink?.success(extractedText)
+                    streamingSink?.success(response.reasoning)
                   }
                 }
               }
@@ -435,6 +445,11 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         modelRunner?.unload()
         modelRunner = null
         
+        // Clear all conversations when model is unloaded
+        conversations.clear()
+        conversationGenerationOptions.clear()
+        conversationFunctions.clear()
+        
         Log.d("FlutterLeapSDK", "Model unloaded successfully")
         
         withContext(Dispatchers.Main) {
@@ -453,28 +468,32 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
 
   private fun getLeapSDKVersion(): String {
     return try {
-      // Try to get version from BuildConfig or package info
       "0.4.0" // Current version being used
     } catch (e: Exception) {
       "unknown"
     }
   }
   
-  // Helper function to convert MessageResponse to Map for Flutter
-  private fun extractFunctionCalls(messageResponse: MessageResponse): List<Map<String, Any>>? {
-    // Extract function calls from MessageResponse if available
-    // This depends on the native LEAP SDK structure
-    return try {
-      val functionCalls = messageResponse.functionCalls
-      functionCalls?.map { call ->
-        mapOf(
-          "name" to call.name,
-          "arguments" to call.arguments
-        )
+  // Helper function to extract function calls from MessageResponse
+  private fun extractFunctionCalls(response: MessageResponse): List<Map<String, Any>>? {
+    return when (response) {
+      is MessageResponse.FunctionCalls -> {
+        response.functionCalls.map { call ->
+          mapOf(
+            "name" to call.name,
+            "arguments" to call.arguments
+          )
+        }
       }
-    } catch (e: Exception) {
-      Log.w("FlutterLeapSDK", "Could not extract function calls: ${e.message}")
-      null
+      is MessageResponse.Complete -> {
+        response.fullMessage.functionCalls?.map { call ->
+          mapOf(
+            "name" to call.name,
+            "arguments" to call.arguments
+          )
+        }
+      }
+      else -> null
     }
   }
 
@@ -487,34 +506,54 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         )
       }
       is MessageResponse.ReasoningChunk -> {
-        val reasoningString = response.toString()
-        val textPattern = Regex("ReasoningChunk\\(.*text=([\\s\\S]*)\\)", RegexOption.DOT_MATCHES_ALL)
-        val match = textPattern.find(reasoningString)
-        val extractedText = match?.groupValues?.get(1) ?: ""
         mapOf(
           "type" to "reasoningChunk",
-          "reasoning" to extractedText
+          "reasoning" to response.reasoning
+        )
+      }
+      is MessageResponse.FunctionCalls -> {
+        mapOf(
+          "type" to "functionCalls",
+          "functionCalls" to response.functionCalls.map { call ->
+            mapOf(
+              "name" to call.name,
+              "arguments" to call.arguments
+            )
+          }
         )
       }
       is MessageResponse.Complete -> {
+        // Extract content from ChatMessage
+        val messageContent = response.fullMessage.content.firstOrNull()
+        val textContent = when (messageContent) {
+          is ChatMessageContent.Text -> messageContent.text
+          else -> ""
+        }
+        
         mapOf(
           "type" to "complete",
           "fullMessage" to mapOf(
-            "role" to "assistant",
-            "content" to response.fullMessage?.content ?: "",
-            "reasoningContent" to null, // TODO: Extract reasoning from fullMessage
-            "functionCalls" to extractFunctionCalls(messageResponse) // Extract function calls from response
+            "role" to response.fullMessage.role.type,
+            "content" to textContent,
+            "reasoningContent" to response.fullMessage.reasoningContent,
+            "functionCalls" to response.fullMessage.functionCalls?.map { call ->
+              mapOf(
+                "name" to call.name,
+                "arguments" to call.arguments
+              )
+            }
           ),
           "finishReason" to when (response.finishReason) {
-            // Map native finish reasons to our enum
+            GenerationFinishReason.STOP -> "stop"
+            GenerationFinishReason.EXCEED_CONTEXT -> "length"
             else -> "stop"
           },
-          "stats" -> response.stats?.let { stats ->
+          "stats" to response.stats?.let { stats ->
             mapOf(
               "promptTokens" to stats.promptTokens,
               "completionTokens" to stats.completionTokens,
-              "timeMs" to stats.timeMs,
-              "tokensPerSecond" to stats.tokensPerSecond
+              "totalTokens" to stats.totalTokens,
+              "tokensPerSecond" to stats.tokenPerSecond
             )
           }
         )
@@ -671,24 +710,36 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     
     Log.d("FlutterLeapSDK", "Generating conversation response (${message.length} chars)")
     
-    mainScope.launch {
+    mainScope.launch(Dispatchers.IO) {
       try {
-        withContext(Dispatchers.IO) {
-          val storedOptions = conversationGenerationOptions[conversationId]
-          val nativeOptions = createNativeGenerationOptions(storedOptions)
-          
-          val responses = conversation.generateResponse(message, nativeOptions)
-          var fullResponse = ""
-          
-          for (response in responses) {
-            fullResponse += response
+        val storedOptions = conversationGenerationOptions[conversationId]
+        val nativeOptions = createNativeGenerationOptions(storedOptions)
+        
+        var fullResponse = ""
+        
+        conversation.generateResponse(message, nativeOptions)
+          .onEach { response ->
+            when (response) {
+              is MessageResponse.Chunk -> {
+                fullResponse += response.text
+              }
+              is MessageResponse.ReasoningChunk -> {
+                fullResponse += response.reasoning
+              }
+              is MessageResponse.Complete -> {
+                Log.d("FlutterLeapSDK", "Conversation generation completed (${fullResponse.length} chars)")
+              }
+              else -> {
+                Log.d("FlutterLeapSDK", "Response type: ${response.javaClass.simpleName}")
+              }
+            }
           }
-          
-          withContext(Dispatchers.Main) {
-            Log.d("FlutterLeapSDK", "Conversation generation completed (${fullResponse.length} chars)")
-            result.success(fullResponse)
-          }
+          .collect { }
+        
+        withContext(Dispatchers.Main) {
+          result.success(fullResponse)
         }
+        
       } catch (e: Exception) {
         withContext(Dispatchers.Main) {
           Log.e("FlutterLeapSDK", "Error generating conversation response: ${e.message}")
@@ -717,34 +768,45 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     activeStreamingJob?.cancel()
     shouldCancelStreaming = false
     
-    activeStreamingJob = mainScope.launch {
+    activeStreamingJob = mainScope.launch(Dispatchers.IO) {
       try {
-        withContext(Dispatchers.IO) {
-          val storedOptions = conversationGenerationOptions[conversationId]
-          val nativeOptions = createNativeGenerationOptions(storedOptions)
-          
-          val responses = conversation.generateResponse(message, nativeOptions)
-          
-          for (response in responses) {
-            if (shouldCancelStreaming) {
-              Log.d("FlutterLeapSDK", "Conversation streaming cancelled")
-              break
-            }
+        val storedOptions = conversationGenerationOptions[conversationId]
+        val nativeOptions = createNativeGenerationOptions(storedOptions)
+        
+        conversation.generateResponse(message, nativeOptions)
+          .onEach { response ->
+            if (shouldCancelStreaming) return@onEach
             
-            if (response.isNotEmpty()) {
-              withContext(Dispatchers.Main) {
-                streamingSink?.success(response)
+            when (response) {
+              is MessageResponse.Chunk -> {
+                if (response.text.isNotEmpty()) {
+                  launch(Dispatchers.Main) {
+                    streamingSink?.success(response.text)
+                  }
+                }
+              }
+              is MessageResponse.ReasoningChunk -> {
+                if (response.reasoning.isNotEmpty()) {
+                  launch(Dispatchers.Main) {
+                    streamingSink?.success(response.reasoning)
+                  }
+                }
+              }
+              is MessageResponse.Complete -> {
+                launch(Dispatchers.Main) {
+                  if (!shouldCancelStreaming) {
+                    streamingSink?.success("<STREAM_END>")
+                    Log.d("FlutterLeapSDK", "Conversation streaming completed")
+                  }
+                }
+              }
+              else -> {
+                Log.d("FlutterLeapSDK", "Stream response type: ${response.javaClass.simpleName}")
               }
             }
           }
+          .collect { }
           
-          withContext(Dispatchers.Main) {
-            if (!shouldCancelStreaming) {
-              streamingSink?.success("<STREAM_END>")
-              Log.d("FlutterLeapSDK", "Conversation streaming completed")
-            }
-          }
-        }
       } catch (e: CancellationException) {
         Log.d("FlutterLeapSDK", "Conversation streaming was cancelled")
       } catch (e: Exception) {
@@ -752,6 +814,9 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
           Log.e("FlutterLeapSDK", "Error in conversation streaming: ${e.message}")
           streamingSink?.error("STREAMING_ERROR", "Error generating streaming response: ${e.message}", null)
         }
+      } finally {
+        activeStreamingJob = null
+        shouldCancelStreaming = false
       }
     }
   }
@@ -785,11 +850,13 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         conversationFunctions[conversationId] = mutableMapOf()
       }
 
-      // Store function schema for later use
-      conversationFunctions[conversationId]!![functionName] = functionSchema
+      // Create LeapFunction from schema
+      val leapFunction = createLeapFunction(functionName, functionSchema)
+      
+      // Store function for later use
+      conversationFunctions[conversationId]!![functionName] = leapFunction
 
       // Register function with native LEAP SDK conversation
-      val leapFunction = createLeapFunction(functionName, functionSchema)
       conversation.registerFunction(leapFunction)
 
       Log.d("FlutterLeapSDK", "Registered function '$functionName' for conversation: $conversationId")
@@ -812,8 +879,8 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       // Remove from stored functions
       conversationFunctions[conversationId]?.remove(functionName)
 
-      // Unregister from native LEAP SDK conversation
-      conversation.unregisterFunction(functionName)
+      // Note: LEAP SDK v0.4.0 Conversation interface doesn't have unregisterFunction method
+      // Functions are automatically unregistered when conversation is disposed
       
       Log.d("FlutterLeapSDK", "Unregistered function '$functionName' from conversation: $conversationId")
       result.success("Function unregistered successfully")
@@ -825,42 +892,68 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
   }
 
   private fun createLeapFunction(name: String, schema: Map<String, Any>): LeapFunction {
-    // Convert Flutter function schema to native LEAP SDK LeapFunction
     val description = schema["description"] as? String ?: ""
-    val parameters = schema["parameters"] as? Map<String, Any> ?: mapOf()
+    val parametersData = schema["parameters"] as? Map<String, Any> ?: mapOf()
+    val propertiesData = parametersData["properties"] as? Map<String, Any> ?: mapOf()
+    val requiredList = parametersData["required"] as? List<String> ?: listOf()
     
-    return LeapFunction(name, description) { args ->
-      // This callback will be called by the native LEAP SDK when the function needs to be executed
-      // We need to bridge this back to Flutter for actual execution
-      executeFlutterFunction(name, args)
+    val parameters = propertiesData.map { (paramName, paramData) ->
+      val paramMap = paramData as? Map<String, Any> ?: mapOf()
+      val paramType = paramMap["type"] as? String ?: "string"
+      val paramDescription = paramMap["description"] as? String ?: ""
+      val isRequired = requiredList.contains(paramName)
+      
+      LeapFunctionParameter(
+        name = paramName,
+        type = convertToLeapFunctionParameterType(paramType, paramMap),
+        description = paramDescription,
+        optional = !isRequired
+      )
     }
+    
+    return LeapFunction(
+      name = name,
+      description = description,
+      parameters = parameters
+    )
   }
   
-  private suspend fun executeFlutterFunction(functionName: String, arguments: Map<String, Any>): Map<String, Any> {
-    // Bridge function execution back to Flutter
-    return try {
-      val result = CompletableDeferred<Map<String, Any>>()
-      
-      Handler(Looper.getMainLooper()).post {
-        methodChannel.invokeMethod("executeFunctionCallback", mapOf(
-          "functionName" to functionName,
-          "arguments" to arguments
-        ), object : MethodChannel.Result {
-          override fun success(data: Any?) {
-            result.complete(data as? Map<String, Any> ?: mapOf("error" to "Invalid response"))
-          }
-          override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
-            result.complete(mapOf("error" to errorMessage))
-          }
-          override fun notImplemented() {
-            result.complete(mapOf("error" to "Function not implemented"))
-          }
-        })
+  private fun convertToLeapFunctionParameterType(type: String, paramData: Map<String, Any>): LeapFunctionParameterType {
+    val description = paramData["description"] as? String
+    
+    return when (type) {
+      "string" -> {
+        val enumValues = paramData["enum"] as? List<String>
+        LeapFunctionParameterType.String(enumValues, description)
       }
-      
-      result.await()
-    } catch (e: Exception) {
-      mapOf("error" to e.message)
+      "number" -> {
+        val enumValues = paramData["enum"] as? List<Number>
+        LeapFunctionParameterType.Number(enumValues, description)
+      }
+      "integer" -> {
+        val enumValues = paramData["enum"] as? List<Int>
+        LeapFunctionParameterType.Integer(enumValues, description)
+      }
+      "boolean" -> LeapFunctionParameterType.Boolean(description)
+      "array" -> {
+        val itemsData = paramData["items"] as? Map<String, Any> ?: mapOf()
+        val itemType = itemsData["type"] as? String ?: "string"
+        val itemParameterType = convertToLeapFunctionParameterType(itemType, itemsData)
+        LeapFunctionParameterType.Array(itemParameterType, description)
+      }
+      "object" -> {
+        val propertiesData = paramData["properties"] as? Map<String, Any> ?: mapOf()
+        val requiredList = paramData["required"] as? List<String> ?: listOf()
+        
+        val properties = propertiesData.mapValues { (_, propData) ->
+          val propMap = propData as? Map<String, Any> ?: mapOf()
+          val propType = propMap["type"] as? String ?: "string"
+          convertToLeapFunctionParameterType(propType, propMap)
+        }
+        
+        LeapFunctionParameterType.Object(properties, requiredList, description)
+      }
+      else -> LeapFunctionParameterType.String(null, description)
     }
   }
 
@@ -881,23 +974,61 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       }
 
       // Check if function is registered
-      val functionSchema = conversationFunctions[conversationId]?.get(functionName)
-      if (functionSchema == null) {
+      val leapFunction = conversationFunctions[conversationId]?.get(functionName)
+      if (leapFunction == null) {
         result.error("FUNCTION_NOT_FOUND", "Function '$functionName' is not registered", null)
         return
       }
 
       Log.d("FlutterLeapSDK", "Executing function '$functionName' with ${arguments.size} arguments")
 
-      // Execute function through native LEAP SDK
-      // This will trigger the function callback registered with the conversation
-      val executionResult = conversation.executeFunction(functionName, arguments)
-
-      result.success(executionResult)
+      // Bridge function execution back to Flutter
+      mainScope.launch {
+        try {
+          val executionResult = executeFlutterFunction(functionName, arguments)
+          withContext(Dispatchers.Main) {
+            result.success(executionResult)
+          }
+        } catch (e: Exception) {
+          withContext(Dispatchers.Main) {
+            Log.e("FlutterLeapSDK", "Error executing function: ${e.message}")
+            result.error("FUNCTION_EXECUTION_ERROR", "Error executing function: ${e.message}", null)
+          }
+        }
+      }
 
     } catch (e: Exception) {
       Log.e("FlutterLeapSDK", "Error executing function: ${e.message}")
       result.error("FUNCTION_EXECUTION_ERROR", "Error executing function: ${e.message}", null)
+    }
+  }
+  
+  private suspend fun executeFlutterFunction(functionName: String, arguments: Map<String, Any>): Map<String, Any> {
+    // Bridge function execution back to Flutter
+    return try {
+      val result = CompletableDeferred<Map<String, Any>>()
+      
+      Handler(Looper.getMainLooper()).post {
+        channel.invokeMethod("executeFunctionCallback", mapOf(
+          "functionName" to functionName,
+          "arguments" to arguments
+        ), object : MethodChannel.Result {
+          override fun success(data: Any?) {
+            @Suppress("UNCHECKED_CAST")
+            result.complete(data as? Map<String, Any> ?: mapOf("error" to "Invalid response"))
+          }
+          override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+            result.complete(mapOf("error" to (errorMessage ?: "Function execution failed")))
+          }
+          override fun notImplemented() {
+            result.complete(mapOf("error" to "Function not implemented"))
+          }
+        })
+      }
+      
+      result.await()
+    } catch (e: Exception) {
+      mapOf("error" to (e.message ?: "Unknown error"))
     }
   }
 }

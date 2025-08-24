@@ -768,12 +768,105 @@ class FlutterLeapSdkService {
           } else {
             yield data;
           }
+        } else if (data is Map<String, dynamic>) {
+          // Handle structured responses from native
+          final type = data['type'] as String?;
+          switch (type) {
+            case 'chunk':
+              yield data['text'] as String? ?? '';
+              break;
+            case 'reasoningChunk':
+              // For now, skip reasoning chunks in simple streaming
+              break;
+            case 'functionCalls':
+              // For now, skip function calls in simple streaming
+              break;
+            case 'complete':
+              // Stream end
+              break;
+            default:
+              // Unknown type, treat as chunk
+              yield data.toString();
+          }
         }
       }
       
     } on PlatformException catch (e) {
       LeapLogger.error('Failed to generate conversation streaming response', e);
       throw GenerationException('Failed to generate streaming response: ${e.message}', e.code);
+    }
+  }
+
+  /// Generate structured streaming response for conversations with MessageResponse objects
+  static Stream<MessageResponse> generateConversationResponseStructured({
+    required String conversationId,
+    required String message,
+    required List<ChatMessage> history,
+    GenerationOptions? generationOptions,
+  }) async* {
+    try {
+      await _channel.invokeMethod('generateConversationResponseStream', {
+        'conversationId': conversationId,
+        'message': message,
+        'history': history.map((m) => m.toMap()).toList(),
+        'generationOptions': generationOptions?.toMap(),
+      });
+
+      await for (final data in _streamChannel.receiveBroadcastStream()) {
+        if (data is String) {
+          if (data == '<STREAM_END>') {
+            yield MessageResponseComplete(
+              message: ChatMessage.assistant(''), // Will be updated by conversation
+              finishReason: GenerationFinishReason.stop,
+              stats: null,
+            );
+            break;
+          } else {
+            // Plain text chunk
+            yield MessageResponseChunk(data);
+          }
+        } else if (data is Map<String, dynamic>) {
+          // Handle structured responses from native
+          final type = data['type'] as String?;
+          switch (type) {
+            case 'chunk':
+              final text = data['text'] as String? ?? '';
+              yield MessageResponseChunk(text);
+              break;
+            case 'reasoningChunk':
+              final reasoning = data['reasoning'] as String? ?? '';
+              yield MessageResponseReasoningChunk(reasoning);
+              break;
+            case 'functionCalls':
+              final functionCallsData = data['functionCalls'] as List<dynamic>? ?? [];
+              final functionCalls = functionCallsData.map((callData) => 
+                LeapFunctionCall.fromMap(callData as Map<String, dynamic>)
+              ).toList();
+              yield MessageResponseFunctionCalls(functionCalls);
+              break;
+            case 'complete':
+              final finishReasonStr = data['finishReason'] as String? ?? 'stop';
+              final finishReason = GenerationFinishReason.values.firstWhere(
+                (e) => e.name == finishReasonStr,
+                orElse: () => GenerationFinishReason.stop,
+              );
+              
+              yield MessageResponseComplete(
+                message: ChatMessage.assistant(''), // Will be updated by conversation
+                finishReason: finishReason,
+                stats: null, // TODO: Parse stats from native
+              );
+              break;
+            default:
+              // Unknown type, treat as chunk
+              yield MessageResponseChunk(data.toString());
+          }
+        }
+      }
+      
+    } on PlatformException catch (e) {
+      LeapLogger.error('Failed to generate structured conversation streaming response', e);
+      throw GenerationException('Failed to generate structured streaming response: ${e.message}', e.code);
     }
   }
 

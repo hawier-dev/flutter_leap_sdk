@@ -36,7 +36,7 @@ class _DemoTabbedScreenState extends State<DemoTabbedScreen> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     FlutterLeapSdkService.initialize();
     _checkModelStatus();
   }
@@ -81,7 +81,6 @@ class _DemoTabbedScreenState extends State<DemoTabbedScreen> with SingleTickerPr
           tabs: const [
             Tab(icon: Icon(Icons.chat), text: 'Chat'),
             Tab(icon: Icon(Icons.functions), text: 'Functions'),
-            Tab(icon: Icon(Icons.stream), text: 'Streaming'),
             Tab(icon: Icon(Icons.settings), text: 'Settings'),
           ],
         ),
@@ -124,7 +123,6 @@ class _DemoTabbedScreenState extends State<DemoTabbedScreen> with SingleTickerPr
               children: [
                 ChatTab(isModelLoaded: _isModelLoaded, onModelStatusChanged: _checkModelStatus),
                 FunctionCallingTab(isModelLoaded: _isModelLoaded),
-                StreamingTab(isModelLoaded: _isModelLoaded),
                 SettingsTab(onModelStatusChanged: _checkModelStatus),
               ],
             ),
@@ -648,16 +646,69 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
     
     try {
       String assistantResponse = '';
+      List<LeapFunctionCall> functionCalls = [];
+      bool needsContinuation = false;
       
-      await for (final chunk in _conversation!.generateResponseStream(userMessage)) {
-        setState(() {
-          if (_messages.isEmpty || _messages.last.role != MessageRole.assistant) {
-            _messages.add(ChatMessage.assistant(''));
+      // Use structured streaming to handle function calls
+      await for (final response in _conversation!.generateResponseStructured(userMessage)) {
+        if (response is MessageResponseChunk) {
+          assistantResponse += response.text;
+          setState(() {
+            if (_messages.isEmpty || _messages.last.role != MessageRole.assistant) {
+              _messages.add(ChatMessage.assistant(''));
+            }
+            _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse);
+          });
+          _scrollToBottom();
+        } else if (response is MessageResponseFunctionCalls) {
+          functionCalls.addAll(response.functionCalls);
+          // Show function call indicators
+          setState(() {
+            if (_messages.isEmpty || _messages.last.role != MessageRole.assistant) {
+              _messages.add(ChatMessage.assistant(''));
+            }
+            String functionDisplay = assistantResponse;
+            if (functionCalls.isNotEmpty) {
+              functionDisplay += '\n\n🔧 Calling functions:\n';
+              for (final call in functionCalls) {
+                functionDisplay += '• ${call.name}(${call.arguments.entries.map((e) => '${e.key}: ${e.value}').join(', ')})\n';
+              }
+            }
+            _messages[_messages.length - 1] = ChatMessage.assistant(functionDisplay);
+          });
+          _scrollToBottom();
+        } else if (response is MessageResponseComplete) {
+          // If there are function calls, execute them and continue generation
+          if (functionCalls.isNotEmpty) {
+            needsContinuation = true;
+            
+            // Execute function calls
+            await _conversation!.executeFunctionCalls(functionCalls);
+            
+            // Show function results
+            setState(() {
+              String functionResultsDisplay = assistantResponse;
+              functionResultsDisplay += '\n\n✅ Function results received. Generating final response...\n';
+              _messages[_messages.length - 1] = ChatMessage.assistant(functionResultsDisplay);
+            });
+            _scrollToBottom();
+            
+            // Continue generation with function results
+            String finalResponse = '';
+            await for (final continuationResponse in _conversation!.generateResponseStructured('')) {
+              if (continuationResponse is MessageResponseChunk) {
+                finalResponse += continuationResponse.text;
+                setState(() {
+                  _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse + '\n\n' + finalResponse);
+                });
+                _scrollToBottom();
+              } else if (continuationResponse is MessageResponseComplete) {
+                break;
+              }
+            }
           }
-          assistantResponse += chunk;
-          _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse);
-        });
-        _scrollToBottom();
+          break;
+        }
       }
     } catch (e) {
       setState(() {
@@ -948,479 +999,6 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
   }
 }
 
-// Streaming Tab - Demonstrates structured streaming responses
-class StreamingTab extends StatefulWidget {
-  final bool isModelLoaded;
-
-  const StreamingTab({
-    super.key,
-    required this.isModelLoaded,
-  });
-
-  @override
-  State<StreamingTab> createState() => _StreamingTabState();
-}
-
-class _StreamingTabState extends State<StreamingTab> {
-  final TextEditingController _messageController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  
-  Conversation? _conversation;
-  List<Map<String, dynamic>> _streamingMessages = [];
-  bool _isStreaming = false;
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _createConversation() async {
-    if (!widget.isModelLoaded) return;
-    
-    try {
-      final conversation = await FlutterLeapSdkService.createConversation(
-        systemPrompt: "You are a helpful AI assistant. Provide detailed, structured responses when appropriate.",
-        generationOptions: GenerationOptions.creative(),
-      );
-      
-      setState(() {
-        _conversation = conversation;
-        _streamingMessages = [];
-      });
-    } catch (e) {
-      _showErrorDialog('Failed to create conversation: $e');
-    }
-  }
-
-  Future<void> _sendMessage() async {
-    if (_messageController.text.trim().isEmpty || _conversation == null) return;
-    
-    final userMessage = _messageController.text.trim();
-    _messageController.clear();
-    
-    setState(() {
-      _streamingMessages.add({
-        'type': 'user',
-        'content': userMessage,
-        'timestamp': DateTime.now(),
-      });
-      _isStreaming = true;
-    });
-    
-    _scrollToBottom();
-    
-    try {
-      String fullResponse = '';
-      String reasoning = '';
-      List<LeapFunctionCall> functionCalls = [];
-      
-      await for (final response in _conversation!.generateResponseStructured(userMessage)) {
-        setState(() {
-          if (response is MessageResponseChunk) {
-            fullResponse += response.text;
-            _updateOrAddAssistantMessage(fullResponse, reasoning, functionCalls, false);
-          } else if (response is MessageResponseReasoningChunk) {
-            reasoning += response.reasoning;
-            _updateOrAddAssistantMessage(fullResponse, reasoning, functionCalls, false);
-          } else if (response is MessageResponseFunctionCalls) {
-            functionCalls.addAll(response.functionCalls);
-            _updateOrAddAssistantMessage(fullResponse, reasoning, functionCalls, false);
-          } else if (response is MessageResponseComplete) {
-            _updateOrAddAssistantMessage(fullResponse, reasoning, functionCalls, true);
-          }
-        });
-        _scrollToBottom();
-      }
-    } catch (e) {
-      setState(() {
-        _streamingMessages.add({
-          'type': 'assistant',
-          'content': 'Error: ${e.toString()}',
-          'timestamp': DateTime.now(),
-          'isComplete': true,
-        });
-      });
-    } finally {
-      setState(() {
-        _isStreaming = false;
-      });
-      _scrollToBottom();
-    }
-  }
-
-  void _updateOrAddAssistantMessage(String content, String reasoning, List<LeapFunctionCall> functionCalls, bool isComplete) {
-    final existingIndex = _streamingMessages.lastIndexWhere((msg) => msg['type'] == 'assistant');
-    
-    if (existingIndex != -1) {
-      _streamingMessages[existingIndex] = {
-        'type': 'assistant',
-        'content': content,
-        'reasoning': reasoning.isEmpty ? null : reasoning,
-        'functionCalls': functionCalls.isEmpty ? null : functionCalls,
-        'timestamp': _streamingMessages[existingIndex]['timestamp'],
-        'isComplete': isComplete,
-      };
-    } else {
-      _streamingMessages.add({
-        'type': 'assistant',
-        'content': content,
-        'reasoning': reasoning.isEmpty ? null : reasoning,
-        'functionCalls': functionCalls.isEmpty ? null : functionCalls,
-        'timestamp': DateTime.now(),
-        'isComplete': isComplete,
-      });
-    }
-  }
-
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!widget.isModelLoaded) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.warning_amber, size: 64, color: Colors.orange),
-            SizedBox(height: 16),
-            Text(
-              'Model not loaded',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            Text(
-              'Please load a model in the Settings tab to see streaming',
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      children: [
-        // Info panel
-        Container(
-          padding: const EdgeInsets.all(12),
-          margin: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.green.shade50,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Structured Streaming Demo',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'This shows real-time streaming with chunk-by-chunk updates, reasoning content, and function calls.',
-                style: TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-        
-        // Messages
-        Expanded(
-          child: _conversation == null 
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.stream, size: 64, color: Colors.grey.shade400),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Streaming Demo',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Watch responses appear in real-time\nas they are generated by the model.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              )
-            : ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(16),
-                itemCount: _streamingMessages.length + (_isStreaming ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (index == _streamingMessages.length && _isStreaming) {
-                    return _buildStreamingIndicator();
-                  }
-                  
-                  final message = _streamingMessages[index];
-                  return _buildStreamingMessageBubble(message);
-                },
-              ),
-        ),
-        
-        // Input
-        _buildMessageInput(),
-      ],
-    );
-  }
-
-  Widget _buildStreamingMessageBubble(Map<String, dynamic> message) {
-    final isUser = message['type'] == 'user';
-    
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!isUser) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.green.shade100,
-              child: Icon(Icons.stream, size: 16, color: Colors.green.shade700),
-            ),
-            const SizedBox(width: 8),
-          ],
-          
-          Flexible(
-            child: Column(
-              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: isUser ? Colors.blue.shade500 : Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(20).copyWith(
-                      bottomLeft: Radius.circular(isUser ? 20 : 4),
-                      bottomRight: Radius.circular(isUser ? 4 : 20),
-                    ),
-                  ),
-                  child: Text(
-                    message['content'] ?? '',
-                    style: TextStyle(
-                      color: isUser ? Colors.white : Colors.black87,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-                
-                if (!isUser && message['reasoning'] != null) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.amber.shade200),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.psychology, size: 16, color: Colors.amber.shade700),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Reasoning:',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.amber.shade700,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          message['reasoning'],
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                
-                if (!isUser && message['functionCalls'] != null) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue.shade200),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.functions, size: 16, color: Colors.blue.shade700),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Function Calls:',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue.shade700,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        ...((message['functionCalls'] as List<LeapFunctionCall>).map((call) => 
-                          Text(
-                            '${call.name}(${call.arguments.entries.map((e) => '${e.key}: ${e.value}').join(', ')})',
-                            style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                          ),
-                        )),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          
-          if (isUser) ...[
-            const SizedBox(width: 8),
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.blue.shade100,
-              child: Icon(Icons.person, size: 16, color: Colors.blue.shade700),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStreamingIndicator() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: Colors.green.shade100,
-            child: Icon(Icons.stream, size: 16, color: Colors.green.shade700),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
-                bottomRight: Radius.circular(20),
-                bottomLeft: Radius.circular(4),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Streaming...'),
-                const SizedBox(width: 8),
-                ...List.generate(3, (index) => 
-                  Container(
-                    width: 8,
-                    height: 8,
-                    margin: EdgeInsets.only(right: index < 2 ? 4 : 0),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade400,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMessageInput() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          if (_conversation == null)
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: _createConversation,
-                icon: const Icon(Icons.stream),
-                label: const Text('Start Streaming Demo'),
-              ),
-            )
-          else ...[
-            Expanded(
-              child: TextField(
-                controller: _messageController,
-                decoration: InputDecoration(
-                  hintText: 'Ask for a detailed explanation...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(25),
-                    borderSide: BorderSide.none,
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey.shade100,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
-                onSubmitted: (_) => _sendMessage(),
-                enabled: !_isStreaming,
-              ),
-            ),
-            const SizedBox(width: 8),
-            FloatingActionButton(
-              onPressed: _isStreaming ? null : _sendMessage,
-              mini: true,
-              child: Icon(_isStreaming ? Icons.hourglass_empty : Icons.send),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
 
 // Settings Tab - Model management and configuration
 class SettingsTab extends StatefulWidget {
@@ -1737,7 +1315,6 @@ class _SettingsTabState extends State<SettingsTab> {
                   const SizedBox(height: 4),
                   const Text('• Basic conversation chat'),
                   const Text('• Function calling with sample functions'),
-                  const Text('• Structured streaming responses'),
                   const Text('• Model download and management'),
                   const SizedBox(height: 8),
                   const Text(

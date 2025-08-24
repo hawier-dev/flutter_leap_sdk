@@ -426,14 +426,23 @@ class Conversation {
       List<LeapFunctionCall> functionCalls = [];
       
       // Generate streaming response using the service
-      await for (final chunk in FlutterLeapSdkService.generateConversationResponseStream(
+      await for (final response in FlutterLeapSdkService.generateConversationResponseStructured(
         conversationId: id,
         message: userMessage,
         history: _history,
         generationOptions: _generationOptions,
       )) {
-        if (chunk == '<STREAM_END>') {
-          // Create completion response
+        if (response is MessageResponseChunk) {
+          fullResponse += response.text;
+          yield response;
+        } else if (response is MessageResponseReasoningChunk) {
+          fullReasoning += response.reasoning;
+          yield response;
+        } else if (response is MessageResponseFunctionCalls) {
+          functionCalls.addAll(response.functionCalls);
+          yield response;
+        } else if (response is MessageResponseComplete) {
+          // Create completion response with accumulated data
           final assistantMsg = ChatMessage.assistant(
             fullResponse, 
             reasoningContent: fullReasoning.isEmpty ? null : fullReasoning,
@@ -444,35 +453,10 @@ class Conversation {
           
           yield MessageResponseComplete(
             message: assistantMsg,
-            finishReason: functionCalls.isNotEmpty ? GenerationFinishReason.functionCall : GenerationFinishReason.stop,
-            stats: null, // TODO: Add stats from native
+            finishReason: functionCalls.isNotEmpty ? GenerationFinishReason.functionCall : response.finishReason,
+            stats: response.stats,
           );
           break;
-        } else {
-          // Parse chunk type - native SDK should send structured chunk data
-          if (chunk.startsWith('<reasoning>')) {
-            final reasoningContent = chunk.replaceFirst('<reasoning>', '').replaceFirst('</reasoning>', '');
-            fullReasoning += reasoningContent;
-            yield MessageResponseReasoningChunk(reasoningContent);
-          } else if (chunk.startsWith('<function_call>')) {
-            // Parse function call from chunk
-            // Expected format: <function_call>{"name": "functionName", "arguments": {...}}</function_call>
-            try {
-              final jsonStr = chunk.replaceFirst('<function_call>', '').replaceFirst('</function_call>', '');
-              final Map<String, dynamic> callData = json.decode(jsonStr);
-              final functionCall = LeapFunctionCall.fromMap(callData);
-              functionCalls.add(functionCall);
-              yield MessageResponseFunctionCalls([functionCall]);
-            } catch (e) {
-              // Fallback: treat as regular chunk if parsing fails
-              fullResponse += chunk;
-              yield MessageResponseChunk(chunk);
-            }
-          } else {
-            // Regular text chunk
-            fullResponse += chunk;
-            yield MessageResponseChunk(chunk);
-          }
         }
       }
 
