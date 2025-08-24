@@ -674,15 +674,54 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
           });
           _scrollToBottom();
         } else if (response is MessageResponseComplete) {
-          // Check if this was a function call completion
-          if (response.finishReason == GenerationFinishReason.functionCall) {
+          // Handle function calling completion properly
+          if (response.finishReason == GenerationFinishReason.functionCall && 
+              response.message.functionCalls != null && 
+              response.message.functionCalls!.isNotEmpty) {
+            
+            // Execute functions in the application (not in library)
+            final results = await _executeFunctionCalls(response.message.functionCalls!);
+            
+            // Add results to conversation using the new API
+            _conversation!.addFunctionResults(results);
+            
+            // Show function results to user
             setState(() {
               String finalDisplay = assistantResponse;
-              finalDisplay += '\n\n✅ Functions executed successfully! ';
-              finalDisplay += 'The results have been added to the conversation. ';
-              finalDisplay += 'You can now ask follow-up questions about the results.';
+              finalDisplay += '\n\n✅ Functions executed:\n';
+              
+              for (final result in results) {
+                final call = result['call'] as Map<String, dynamic>;
+                final functionName = call['name'] as String;
+                final success = result['success'] as bool;
+                
+                if (success) {
+                  final functionResult = result['result'] as Map<String, dynamic>;
+                  
+                  if (functionName == 'calculate_math_expression' && functionResult['success'] == true) {
+                    final expression = functionResult['expression'];
+                    final calculationResult = functionResult['result'];
+                    finalDisplay += '🧮 $expression = $calculationResult\n';
+                  } else if (functionName == 'get_weather') {
+                    final location = functionResult['location'];
+                    final temp = functionResult['temperature'];
+                    final unit = functionResult['unit'];
+                    final description = functionResult['description'];
+                    finalDisplay += '🌤️ Weather in $location: $temp°${unit == 'celsius' ? 'C' : 'F'}, $description\n';
+                  } else if (functionName == 'get_current_time') {
+                    final formatted = functionResult['formatted'];
+                    finalDisplay += '🕒 Current time: $formatted\n';
+                  }
+                } else {
+                  final error = result['error'] as String;
+                  finalDisplay += '❌ Error executing $functionName: $error\n';
+                }
+              }
+              
+              finalDisplay += '\n💬 Ask follow-up questions to get AI response about these results!';
               _messages[_messages.length - 1] = ChatMessage.assistant(finalDisplay);
             });
+            _scrollToBottom();
           }
           break;
         }
@@ -707,6 +746,77 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
       });
     }
     _scrollToBottom();
+  }
+
+  /// Execute function calls in the application
+  /// This is where the application implements the actual function logic
+  Future<List<Map<String, dynamic>>> _executeFunctionCalls(List<LeapFunctionCall> functionCalls) async {
+    final results = <Map<String, dynamic>>[];
+    
+    for (final functionCall in functionCalls) {
+      try {
+        Map<String, dynamic> result;
+        
+        switch (functionCall.name) {
+          case 'get_weather':
+            final location = functionCall.arguments['location'] as String;
+            final unit = functionCall.arguments['unit'] as String? ?? 'celsius';
+            result = {
+              'location': location,
+              'temperature': unit == 'celsius' ? 22 : 72,
+              'unit': unit,
+              'description': 'Partly cloudy',
+              'humidity': 65,
+            };
+            break;
+            
+          case 'get_current_time':
+            final now = DateTime.now();
+            result = {
+              'datetime': now.toIso8601String(),
+              'formatted': '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
+              'timezone': functionCall.arguments['timezone'] ?? 'Local',
+            };
+            break;
+            
+          case 'calculate_math_expression':
+            final expression = functionCall.arguments['expression'] as String;
+            try {
+              final calculationResult = _evaluateExpression(expression);
+              result = {
+                'expression': expression,
+                'result': calculationResult,
+                'success': true,
+              };
+            } catch (e) {
+              result = {
+                'expression': expression,
+                'error': 'Invalid expression',
+                'success': false,
+              };
+            }
+            break;
+            
+          default:
+            throw Exception('Unknown function: ${functionCall.name}');
+        }
+        
+        results.add({
+          'call': functionCall.toMap(),
+          'result': result,
+          'success': true,
+        });
+        
+      } catch (e) {
+        results.add({
+          'call': functionCall.toMap(),
+          'error': e.toString(),
+          'success': false,
+        });
+      }
+    }
+    
+    return results;
   }
 
   void _scrollToBottom() {
