@@ -644,10 +644,11 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
     
     _scrollToBottom();
     
+    String assistantResponse = '';
+    List<LeapFunctionCall> functionCalls = [];
+    bool needsContinuation = false;
+    
     try {
-      String assistantResponse = '';
-      List<LeapFunctionCall> functionCalls = [];
-      bool needsContinuation = false;
       
       // Use structured streaming to handle function calls
       await for (final response in _conversation!.generateResponseStructured(userMessage)) {
@@ -679,34 +680,9 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
           });
           _scrollToBottom();
         } else if (response is MessageResponseComplete) {
-          // If there are function calls, execute them and continue generation
+          // Mark that we need to continue if there are function calls
           if (functionCalls.isNotEmpty) {
             needsContinuation = true;
-            
-            // Execute function calls
-            await _conversation!.executeFunctionCalls(functionCalls);
-            
-            // Show function results
-            setState(() {
-              String functionResultsDisplay = assistantResponse;
-              functionResultsDisplay += '\n\n✅ Function results received. Generating final response...\n';
-              _messages[_messages.length - 1] = ChatMessage.assistant(functionResultsDisplay);
-            });
-            _scrollToBottom();
-            
-            // Continue generation with function results
-            String finalResponse = '';
-            await for (final continuationResponse in _conversation!.generateResponseStructured('')) {
-              if (continuationResponse is MessageResponseChunk) {
-                finalResponse += continuationResponse.text;
-                setState(() {
-                  _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse + '\n\n' + finalResponse);
-                });
-                _scrollToBottom();
-              } else if (continuationResponse is MessageResponseComplete) {
-                break;
-              }
-            }
           }
           break;
         }
@@ -715,12 +691,48 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
       setState(() {
         _messages.add(ChatMessage.assistant('Error: ${e.toString()}'));
       });
-    } finally {
-      setState(() {
-        _isTyping = false;
-      });
-      _scrollToBottom();
     }
+    
+    // Handle function call continuation after first generation completes
+    if (needsContinuation && functionCalls.isNotEmpty) {
+      try {
+        // Execute function calls
+        await _conversation!.executeFunctionCalls(functionCalls);
+        
+        // Show function results
+        setState(() {
+          String functionResultsDisplay = assistantResponse;
+          functionResultsDisplay += '\n\n✅ Function results received. Generating final response...\n';
+          _messages[_messages.length - 1] = ChatMessage.assistant(functionResultsDisplay);
+        });
+        _scrollToBottom();
+        
+        // Continue generation with function results
+        String finalResponse = '';
+        await for (final continuationResponse in _conversation!.generateResponseStructured('Please provide the final response based on the function results.')) {
+          if (continuationResponse is MessageResponseChunk) {
+            finalResponse += continuationResponse.text;
+            setState(() {
+              _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse + '\n\n' + finalResponse);
+            });
+            _scrollToBottom();
+          } else if (continuationResponse is MessageResponseComplete) {
+            break;
+          }
+        }
+      } catch (e) {
+        setState(() {
+          String errorDisplay = assistantResponse;
+          errorDisplay += '\n\n❌ Error executing functions: ${e.toString()}';
+          _messages[_messages.length - 1] = ChatMessage.assistant(errorDisplay);
+        });
+      }
+    }
+    
+    setState(() {
+      _isTyping = false;
+    });
+    _scrollToBottom();
   }
 
   void _scrollToBottom() {
