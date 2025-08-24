@@ -24,6 +24,10 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
   private var streamingSink: EventChannel.EventSink? = null
   private var activeStreamingJob: Job? = null
   private var shouldCancelStreaming = false
+  
+  // Conversation management
+  private val conversations = mutableMapOf<String, ai.liquid.leap.Conversation>()
+  private val conversationGenerationOptions = mutableMapOf<String, Map<String, Any>>()
 
   override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     channel = MethodChannel(flutterPluginBinding.binaryMessenger, "flutter_leap_sdk")
@@ -67,6 +71,26 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       }
       "unloadModel" -> {
         unloadModel(result)
+      }
+      "createConversation" -> {
+        val conversationId = call.argument<String>("conversationId") ?: ""
+        val systemPrompt = call.argument<String>("systemPrompt") ?: ""
+        val generationOptions = call.argument<Map<String, Any>>("generationOptions")
+        createConversation(conversationId, systemPrompt, generationOptions, result)
+      }
+      "generateConversationResponse" -> {
+        val conversationId = call.argument<String>("conversationId") ?: ""
+        val message = call.argument<String>("message") ?: ""
+        generateConversationResponse(conversationId, message, result)
+      }
+      "generateConversationResponseStream" -> {
+        val conversationId = call.argument<String>("conversationId") ?: ""
+        val message = call.argument<String>("message") ?: ""
+        generateConversationResponseStream(conversationId, message, result)
+      }
+      "disposeConversation" -> {
+        val conversationId = call.argument<String>("conversationId") ?: ""
+        disposeConversation(conversationId, result)
       }
       else -> {
         result.notImplemented()
@@ -395,5 +419,144 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     mainScope.cancel()
     
     Log.d("FlutterLeapSDK", "Plugin detached and cleaned up")
+  }
+  
+  // MARK: - Conversation Management
+  
+  private fun createConversation(conversationId: String, systemPrompt: String, generationOptions: Map<String, Any>?, result: Result) {
+    val runner = modelRunner
+    if (runner == null) {
+      result.error("MODEL_NOT_LOADED", "Model is not loaded", null)
+      return
+    }
+    
+    if (conversationId.isEmpty()) {
+      result.error("INVALID_ARGUMENTS", "conversationId is required", null)
+      return
+    }
+    
+    Log.d("FlutterLeapSDK", "Creating conversation: $conversationId")
+    
+    try {
+      // Create conversation
+      val conversation = runner.createConversation(systemPrompt)
+      conversations[conversationId] = conversation
+      
+      // Store generation options if provided
+      generationOptions?.let {
+        conversationGenerationOptions[conversationId] = it
+      }
+      
+      result.success("Conversation created successfully")
+    } catch (e: Exception) {
+      Log.e("FlutterLeapSDK", "Error creating conversation: ${e.message}")
+      result.error("CONVERSATION_ERROR", "Error creating conversation: ${e.message}", null)
+    }
+  }
+  
+  private fun generateConversationResponse(conversationId: String, message: String, result: Result) {
+    val conversation = conversations[conversationId]
+    if (conversation == null) {
+      result.error("CONVERSATION_NOT_FOUND", "Conversation not found: $conversationId", null)
+      return
+    }
+    
+    if (message.trim().isEmpty()) {
+      result.error("INVALID_INPUT", "Message cannot be empty", null)
+      return
+    }
+    
+    Log.d("FlutterLeapSDK", "Generating conversation response (${message.length} chars)")
+    
+    mainScope.launch {
+      try {
+        withContext(Dispatchers.IO) {
+          val responses = conversation.generateResponse(message)
+          var fullResponse = ""
+          
+          for (response in responses) {
+            fullResponse += response
+          }
+          
+          withContext(Dispatchers.Main) {
+            Log.d("FlutterLeapSDK", "Conversation generation completed (${fullResponse.length} chars)")
+            result.success(fullResponse)
+          }
+        }
+      } catch (e: Exception) {
+        withContext(Dispatchers.Main) {
+          Log.e("FlutterLeapSDK", "Error generating conversation response: ${e.message}")
+          result.error("GENERATION_ERROR", "Error generating response: ${e.message}", null)
+        }
+      }
+    }
+  }
+  
+  private fun generateConversationResponseStream(conversationId: String, message: String, result: Result) {
+    val conversation = conversations[conversationId]
+    if (conversation == null) {
+      result.error("CONVERSATION_NOT_FOUND", "Conversation not found: $conversationId", null)
+      return
+    }
+    
+    if (message.trim().isEmpty()) {
+      result.error("INVALID_INPUT", "Message cannot be empty", null)
+      return
+    }
+    
+    Log.d("FlutterLeapSDK", "Starting conversation streaming response (${message.length} chars)")
+    result.success("Streaming started")
+    
+    // Cancel any existing streaming
+    activeStreamingJob?.cancel()
+    shouldCancelStreaming = false
+    
+    activeStreamingJob = mainScope.launch {
+      try {
+        withContext(Dispatchers.IO) {
+          val responses = conversation.generateResponse(message)
+          
+          for (response in responses) {
+            if (shouldCancelStreaming) {
+              Log.d("FlutterLeapSDK", "Conversation streaming cancelled")
+              break
+            }
+            
+            if (response.isNotEmpty()) {
+              withContext(Dispatchers.Main) {
+                streamingSink?.success(response)
+              }
+            }
+          }
+          
+          withContext(Dispatchers.Main) {
+            if (!shouldCancelStreaming) {
+              streamingSink?.success("<STREAM_END>")
+              Log.d("FlutterLeapSDK", "Conversation streaming completed")
+            }
+          }
+        }
+      } catch (e: CancellationException) {
+        Log.d("FlutterLeapSDK", "Conversation streaming was cancelled")
+      } catch (e: Exception) {
+        withContext(Dispatchers.Main) {
+          Log.e("FlutterLeapSDK", "Error in conversation streaming: ${e.message}")
+          streamingSink?.error("STREAMING_ERROR", "Error generating streaming response: ${e.message}", null)
+        }
+      }
+    }
+  }
+  
+  private fun disposeConversation(conversationId: String, result: Result) {
+    if (conversationId.isEmpty()) {
+      result.error("INVALID_ARGUMENTS", "conversationId is required", null)
+      return
+    }
+    
+    conversations.remove(conversationId)
+    conversationGenerationOptions.remove(conversationId)
+    
+    Log.d("FlutterLeapSDK", "Disposed conversation: $conversationId")
+    result.success("Conversation disposed successfully")
   }
 }

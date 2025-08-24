@@ -1,5 +1,5 @@
-group 'com.example.flutter_leap_sdk'
-version '1.0-SNAPSHOT'
+group 'dev.hawier.flutter_leap_sdk'
+version '0.1.0'
 
 buildscript {
     ext.kotlin_version = '1.9.21'

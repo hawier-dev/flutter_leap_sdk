@@ -13,6 +13,10 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
     private var currentModelPath: String?
     private var activeStreamingTask: Task<Void, Never>?
     
+    // Conversation management
+    private var conversations: [String: Conversation] = [:]
+    private var conversationGenerationOptions: [String: [String: Any]] = [:]
+    
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = FlutterLeapSdkPlugin()
         
@@ -43,6 +47,14 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             result(isModelLoaded)
         case "unloadModel":
             unloadModel(result: result)
+        case "createConversation":
+            createConversation(call: call, result: result)
+        case "generateConversationResponse":
+            generateConversationResponse(call: call, result: result)
+        case "generateConversationResponseStream":
+            generateConversationResponseStream(call: call, result: result)
+        case "disposeConversation":
+            disposeConversation(call: call, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -371,6 +383,178 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                 result("Model unloaded successfully")
             }
         }
+    }
+    
+    // MARK: - Conversation Management
+    
+    private func createConversation(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let runner = modelRunner, isModelLoaded else {
+            result(FlutterError(code: "MODEL_NOT_LOADED", message: "Model is not loaded", details: nil))
+            return
+        }
+        
+        guard let args = call.arguments as? [String: Any],
+              let conversationId = args["conversationId"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId is required", details: nil))
+            return
+        }
+        
+        let systemPrompt = args["systemPrompt"] as? String ?? ""
+        let generationOptions = args["generationOptions"] as? [String: Any]
+        
+        print("Flutter LEAP SDK iOS: Creating conversation: \(conversationId)")
+        
+        // Create conversation
+        let conversation = runner.createConversation(systemPrompt: systemPrompt)
+        conversations[conversationId] = conversation
+        
+        // Store generation options if provided
+        if let options = generationOptions {
+            conversationGenerationOptions[conversationId] = options
+        }
+        
+        result("Conversation created successfully")
+    }
+    
+    private func generateConversationResponse(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let conversationId = args["conversationId"] as? String,
+              let message = args["message"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId and message are required", details: nil))
+            return
+        }
+        
+        guard let conversation = conversations[conversationId] else {
+            result(FlutterError(code: "CONVERSATION_NOT_FOUND", message: "Conversation not found: \(conversationId)", details: nil))
+            return
+        }
+        
+        // Validate input
+        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedMessage.isEmpty else {
+            result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
+            return
+        }
+        
+        print("Flutter LEAP SDK iOS: Generating conversation response (\(message.count) chars)")
+        
+        Task {
+            do {
+                var fullResponse = ""
+                
+                let chatMessage = ChatMessage(role: .user, content: [.text(message)])
+                for try await messageResponse in conversation.generateResponse(message: chatMessage) {
+                    switch messageResponse {
+                    case .chunk(let text):
+                        fullResponse += text
+                    case .reasoningChunk(let text):
+                        fullResponse += text
+                    case .complete(let finalText, let info):
+                        print("Flutter LEAP SDK iOS: Conversation generation completed (\(fullResponse.count) chars)")
+                        break
+                    @unknown default:
+                        break
+                    }
+                }
+                
+                DispatchQueue.main.async {
+                    result(fullResponse)
+                }
+            } catch {
+                print("Flutter LEAP SDK iOS: Error generating conversation response: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    result(FlutterError(code: "GENERATION_ERROR", 
+                                      message: "Error generating response: \(error.localizedDescription)", 
+                                      details: nil))
+                }
+            }
+        }
+    }
+    
+    private func generateConversationResponseStream(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let conversationId = args["conversationId"] as? String,
+              let message = args["message"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId and message are required", details: nil))
+            return
+        }
+        
+        guard let conversation = conversations[conversationId] else {
+            result(FlutterError(code: "CONVERSATION_NOT_FOUND", message: "Conversation not found: \(conversationId)", details: nil))
+            return
+        }
+        
+        // Validate input
+        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedMessage.isEmpty else {
+            result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
+            return
+        }
+        
+        print("Flutter LEAP SDK iOS: Starting conversation streaming response (\(message.count) chars)")
+        result("Streaming started")
+        
+        // Cancel any existing streaming
+        activeStreamingTask?.cancel()
+        
+        activeStreamingTask = Task {
+            do {
+                let chatMessage = ChatMessage(role: .user, content: [.text(message)])
+                for try await messageResponse in conversation.generateResponse(message: chatMessage) {
+                    // Check for cancellation
+                    try Task.checkCancellation()
+                    
+                    switch messageResponse {
+                    case .chunk(let text):
+                        if !text.isEmpty {
+                            DispatchQueue.main.async {
+                                self.eventSink?(text)
+                            }
+                        }
+                    case .reasoningChunk(let text):
+                        if !text.isEmpty {
+                            DispatchQueue.main.async {
+                                self.eventSink?(text)
+                            }
+                        }
+                    case .complete(let finalText, let info):
+                        DispatchQueue.main.async {
+                            self.eventSink?("<STREAM_END>")
+                        }
+                        print("Flutter LEAP SDK iOS: Conversation streaming completed")
+                        break
+                    @unknown default:
+                        break
+                    }
+                }
+                
+            } catch {
+                if error is CancellationError {
+                    print("Flutter LEAP SDK iOS: Conversation streaming was cancelled")
+                } else {
+                    print("Flutter LEAP SDK iOS: Error in conversation streaming: \(error.localizedDescription)")
+                    DispatchQueue.main.async {
+                        self.eventSink?(FlutterError(code: "STREAMING_ERROR", 
+                                                   message: "Error generating streaming response: \(error.localizedDescription)", 
+                                                   details: nil))
+                    }
+                }
+            }
+        }
+    }
+    
+    private func disposeConversation(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let conversationId = args["conversationId"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId is required", details: nil))
+            return
+        }
+        
+        conversations.removeValue(forKey: conversationId)
+        conversationGenerationOptions.removeValue(forKey: conversationId)
+        
+        print("Flutter LEAP SDK iOS: Disposed conversation: \(conversationId)")
+        result("Conversation disposed successfully")
     }
 }
 

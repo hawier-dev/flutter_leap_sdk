@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
-import 'package:flutter_downloader/flutter_downloader.dart';
+import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'models.dart';
 import 'exceptions.dart';
 import 'leap_logger.dart';
+import 'progress_throttler.dart';
+import 'conversation.dart';
 
 class FlutterLeapSdkService {
   static const MethodChannel _channel = MethodChannel('flutter_leap_sdk');
@@ -16,7 +18,11 @@ class FlutterLeapSdkService {
   // State management - replaced static with instance-based
   bool _isModelLoaded = false;
   String _currentLoadedModel = '';
-  bool _isDownloaderInitialized = false;
+  late Dio _dio;
+  final Map<String, CancelToken> _activeDownloads = {};
+  
+  // Conversation management
+  final Map<String, Conversation> _conversations = {};
   
   // Singleton instance
   static FlutterLeapSdkService? _instance;
@@ -28,6 +34,11 @@ class FlutterLeapSdkService {
   FlutterLeapSdkService._internal() {
     // Initialize logging
     LeapLogger.initialize();
+    
+    // Initialize Dio
+    _dio = Dio();
+    _dio.options.connectTimeout = const Duration(seconds: 30);
+    _dio.options.receiveTimeout = const Duration(minutes: 10);
     
     LeapLogger.info('FlutterLeapSdkService initialized');
   }
@@ -71,7 +82,7 @@ class FlutterLeapSdkService {
   }
   
   Future<void> _ensureInitialized() async {
-    // Download manager initialization is handled automatically
+    // Dio is initialized in constructor
     LeapLogger.info('Service initialization complete');
   }
 
@@ -292,17 +303,26 @@ class FlutterLeapSdkService {
     }
   }
 
-  /// Download a model with progress monitoring (1-second intervals)
-  static Future<String?> downloadModel({
+  /// Download a model with progress monitoring using Dio
+  static Future<String> downloadModel({
     String? modelUrl,
     String? modelName,
     Function(DownloadProgress)? onProgress,
   }) async {
-    await _ensureDownloaderInitialized();
+    return await instance._downloadModel(
+      modelUrl: modelUrl,
+      modelName: modelName,
+      onProgress: onProgress,
+    );
+  }
 
+  Future<String> _downloadModel({
+    String? modelUrl,
+    String? modelName,
+    Function(DownloadProgress)? onProgress,
+  }) async {
     try {
       final fileName = modelName ?? 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle';
-      final tempFileName = '$fileName.temp';
       final url = modelUrl ?? availableModels[fileName]?.url ?? 
           'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-350M-8da4w_output_8da8w-seq_4096.bundle?download=true';
 
@@ -313,155 +333,91 @@ class FlutterLeapSdkService {
         await leapDir.create(recursive: true);
       }
 
-      // Start download and return taskId
-      final taskId = await FlutterDownloader.enqueue(
-        url: url,
-        fileName: tempFileName,
-        savedDir: leapDir.path,
-        showNotification: false,
-        openFileFromNotification: false,
-      );
+      final filePath = '${leapDir.path}/$fileName';
+      final tempPath = '$filePath.temp';
+      
+      // Generate unique download ID
+      final downloadId = DateTime.now().millisecondsSinceEpoch.toString();
+      final cancelToken = CancelToken();
+      _activeDownloads[downloadId] = cancelToken;
 
-      // Set up progress monitoring if callback provided
-      if (onProgress != null && taskId != null) {
-        _monitorDownloadProgress(taskId, onProgress);
-      }
-
-      return taskId;
-    } catch (e) {
-      LeapLogger.error('Download failed', e);
-      throw DownloadException('Failed to start download: $e', 'DOWNLOAD_ERROR');
-    }
-  }
-
-  /// Monitor download progress for a specific task (1-second intervals)
-  static void _monitorDownloadProgress(
-    String taskId,
-    Function(DownloadProgress) onProgress,
-  ) {
-    Timer.periodic(const Duration(seconds: 1), (timer) async {
       try {
-        await _ensureDownloaderInitialized();
+        LeapLogger.info('Starting download: $fileName');
         
-        final tasks = await FlutterDownloader.loadTasks();
-        final task = tasks?.firstWhere(
-          (task) => task.taskId == taskId,
-          orElse: () => throw StateError('Task not found'),
+        // Create throttler if progress callback is provided
+        ProgressThrottler? throttler;
+        if (onProgress != null) {
+          throttler = ProgressThrottler(
+            throttleDuration: const Duration(milliseconds: 200),
+            percentageThreshold: 1.0,
+            onUpdate: (received, total) {
+              final percentage = (received / total * 100);
+              final speedEstimate = received > 0 ? '${(received / 1024 / 1024).toStringAsFixed(1)} MB/s' : '0.0 MB/s';
+              
+              onProgress(DownloadProgress(
+                bytesDownloaded: received,
+                totalBytes: total,
+                percentage: percentage,
+                speed: speedEstimate,
+              ));
+            },
+          );
+        }
+        
+        await _dio.download(
+          url,
+          tempPath,
+          cancelToken: cancelToken,
+          onReceiveProgress: throttler?.call,
         );
 
-        if (task == null) {
-          timer.cancel();
-          return;
-        }
-
-        final progress = task.progress;
-        final status = task.status;
-        final modelInfo = availableModels.values.first;
-        final estimatedSizeMB = int.tryParse(modelInfo.size.replaceAll(RegExp(r'[^0-9]'), '')) ?? 350;
-        final totalBytes = estimatedSizeMB * 1024 * 1024;
-        final downloadedBytes = (totalBytes * progress / 100).round();
-
-        // Simple speed estimation based on progress
-        final speedMBs = progress > 0 ? (downloadedBytes / 1024 / 1024 / 10).toStringAsFixed(1) : '0.0';
-
-        final downloadProgress = DownloadProgress(
-          bytesDownloaded: downloadedBytes,
-          totalBytes: totalBytes,
-          percentage: progress.toDouble(),
-          speed: '${speedMBs} MB/s',
-        );
-
-        onProgress(downloadProgress);
-
-        if (status == DownloadTaskStatus.complete) {
-          timer.cancel();
-          await _finalizeDownload(taskId);
-        } else if (status == DownloadTaskStatus.failed || 
-                   status == DownloadTaskStatus.canceled) {
-          timer.cancel();
-        }
-      } catch (e) {
-        LeapLogger.error('Progress monitoring error', e);
-        timer.cancel();
-      }
-    });
-  }
-
-  /// Initialize flutter_downloader
-  static Future<void> _ensureDownloaderInitialized() async {
-    if (!instance._isDownloaderInitialized) {
-      await FlutterDownloader.initialize(debug: false, ignoreSsl: false);
-      instance._isDownloaderInitialized = true;
-      LeapLogger.info('Flutter downloader initialized');
-    }
-  }
-
-  /// Finalize download by renaming temp file
-  static Future<void> _finalizeDownload(String taskId) async {
-    try {
-      final tasks = await FlutterDownloader.loadTasks();
-      final task = tasks?.firstWhere(
-        (task) => task.taskId == taskId,
-        orElse: () => throw StateError('Task not found'),
-      );
-
-      if (task?.filename?.endsWith('.temp') == true) {
-        final tempPath = '${task!.savedDir}/${task.filename}';
-        final finalPath = tempPath.replaceAll('.temp', '');
-        
+        // Move temp file to final location
         final tempFile = File(tempPath);
         if (await tempFile.exists()) {
-          await tempFile.rename(finalPath);
-          LeapLogger.info('Download finalized: $finalPath');
+          await tempFile.rename(filePath);
+          LeapLogger.info('Download completed: $fileName');
         }
+        
+        _activeDownloads.remove(downloadId);
+        return downloadId;
+        
+      } catch (e) {
+        // Clean up temp file on error
+        final tempFile = File(tempPath);
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+        _activeDownloads.remove(downloadId);
+        rethrow;
       }
     } catch (e) {
-      LeapLogger.error('Failed to finalize download', e);
+      LeapLogger.error('Download failed', e);
+      throw DownloadException('Failed to download model: $e', 'DOWNLOAD_ERROR');
     }
   }
 
-  /// Cancel download by taskId
-  static Future<void> cancelDownload(String taskId) async {
-    await FlutterDownloader.cancel(taskId: taskId);
+  /// Cancel download by downloadId
+  static Future<void> cancelDownload(String downloadId) async {
+    return await instance._cancelDownload(downloadId);
   }
-
-  /// Pause download by taskId
-  static Future<void> pauseDownload(String taskId) async {
-    await FlutterDownloader.pause(taskId: taskId);
-  }
-
-  /// Resume download by taskId
-  static Future<String?> resumeDownload(String taskId) async {
-    return await FlutterDownloader.resume(taskId: taskId);
-  }
-
-  /// Retry failed download by taskId
-  static Future<String?> retryDownload(String taskId) async {
-    try {
-      return await FlutterDownloader.retry(taskId: taskId);
-    } catch (e) {
-      throw DownloadException('Failed to retry download: $e', 'RETRY_ERROR');
+  
+  Future<void> _cancelDownload(String downloadId) async {
+    final cancelToken = _activeDownloads[downloadId];
+    if (cancelToken != null) {
+      cancelToken.cancel('Download cancelled by user');
+      _activeDownloads.remove(downloadId);
+      LeapLogger.info('Download cancelled: $downloadId');
     }
   }
 
-  /// Get download status for a taskId
-  static Future<DownloadTaskStatus?> getDownloadStatus(String taskId) async {
-    final tasks = await FlutterDownloader.loadTasks();
-    final task = tasks?.firstWhere((t) => t.taskId == taskId, orElse: () => throw StateError('Not found'));
-    return task?.status;
+  /// Check if download is active
+  static bool isDownloadActive(String downloadId) {
+    return instance._activeDownloads.containsKey(downloadId);
   }
-
-  /// Get download progress for a taskId
-  static Future<DownloadProgress?> getDownloadProgress(String taskId) async {
-    final tasks = await FlutterDownloader.loadTasks();
-    final task = tasks?.firstWhere((t) => t.taskId == taskId, orElse: () => throw StateError('Not found'));
-    if (task == null) return null;
-    
-    return DownloadProgress(
-      bytesDownloaded: task.progress * 10 * 1024 * 1024 ~/ 100,
-      totalBytes: 10 * 1024 * 1024,
-      percentage: task.progress.toDouble(),
-    );
+  
+  /// Get list of active download IDs
+  static List<String> getActiveDownloads() {
+    return instance._activeDownloads.keys.toList();
   }
 
   /// Check if a specific model file exists
@@ -536,14 +492,9 @@ class FlutterLeapSdkService {
       final appDir = await getApplicationDocumentsDirectory();
       final modelPath = '${appDir.path}/leap/$fileName';
 
-      // Use background file operations
       final file = File(modelPath);
-      await file.delete();
-      final success = true;
-      
-      if (success) {
-        // Invalidate cache
-        // File cache invalidation removed
+      if (await file.exists()) {
+        await file.delete();
         
         // Update state if this was the loaded model
         if (_currentLoadedModel == fileName) {
@@ -556,7 +507,7 @@ class FlutterLeapSdkService {
         return true;
       }
       
-      LeapLogger.warning('Failed to delete model (file may not exist): $fileName');
+      LeapLogger.warning('Model file does not exist: $fileName');
       return false;
       
     } catch (e) {
@@ -577,25 +528,169 @@ class FlutterLeapSdkService {
     _isModelLoaded = false;
     _currentLoadedModel = '';
     
-    // Cleanup file cache
-    // Cleanup removed - using simple implementation
+    // Cancel all active downloads
+    for (final cancelToken in _activeDownloads.values) {
+      cancelToken.cancel('Service disposed');
+    }
+    _activeDownloads.clear();
+    
+    // Dispose all conversations
+    _conversations.clear();
     
     LeapLogger.info('FlutterLeapSdkService disposed');
   }
   
   /// Get service statistics for debugging
   static Map<String, dynamic> getStats() {
-    final cacheStats = {'totalEntries': 0, 'expiredEntries': 0};
-    final activeDownloads = <String>[];
-    
     return {
       'isModelLoaded': instance._isModelLoaded,
       'currentModel': instance._currentLoadedModel,
-      'cacheStats': {
-        'totalEntries': cacheStats['totalEntries'],
-        'expiredEntries': cacheStats['expiredEntries'],
-      },
-      'activeDownloads': activeDownloads.length,
+      'activeDownloads': instance._activeDownloads.length,
+      'downloadIds': instance._activeDownloads.keys.toList(),
+      'activeConversations': instance._conversations.length,
+      'conversationIds': instance._conversations.keys.toList(),
     };
+  }
+
+  // MARK: - Conversation Management
+  
+  /// Create a new conversation with optional system prompt and generation options
+  static Future<Conversation> createConversation({
+    String? systemPrompt,
+    GenerationOptions? generationOptions,
+  }) async {
+    return await instance._createConversation(
+      systemPrompt: systemPrompt,
+      generationOptions: generationOptions,
+    );
+  }
+  
+  Future<Conversation> _createConversation({
+    String? systemPrompt,
+    GenerationOptions? generationOptions,
+  }) async {
+    if (!_isModelLoaded) {
+      throw const ModelNotLoadedException();
+    }
+    
+    // Generate unique conversation ID
+    final conversationId = DateTime.now().millisecondsSinceEpoch.toString();
+    
+    try {
+      // Create conversation on native side
+      await _channel.invokeMethod('createConversation', {
+        'conversationId': conversationId,
+        'systemPrompt': systemPrompt ?? '',
+        'generationOptions': generationOptions?.toMap(),
+      });
+      
+      // Create Dart conversation wrapper
+      final conversation = Conversation(
+        id: conversationId,
+        systemPrompt: systemPrompt,
+        generationOptions: generationOptions,
+      );
+      
+      _conversations[conversationId] = conversation;
+      
+      LeapLogger.info('Created conversation: $conversationId');
+      return conversation;
+      
+    } catch (e) {
+      LeapLogger.error('Failed to create conversation', e);
+      throw FlutterLeapSdkException('Failed to create conversation: $e', 'CONVERSATION_ERROR');
+    }
+  }
+  
+  /// Get an existing conversation by ID
+  static Conversation? getConversation(String id) {
+    return instance._conversations[id];
+  }
+  
+  /// Get list of all active conversation IDs
+  static List<String> getActiveConversationIds() {
+    return instance._conversations.keys.toList();
+  }
+  
+  /// Get list of all active conversations
+  static List<Conversation> getActiveConversations() {
+    return instance._conversations.values.toList();
+  }
+  
+  /// Dispose a conversation and free its resources
+  static Future<void> disposeConversation(String conversationId) async {
+    await instance._disposeConversation(conversationId);
+  }
+  
+  Future<void> _disposeConversation(String conversationId) async {
+    try {
+      // Dispose on native side
+      await _channel.invokeMethod('disposeConversation', {
+        'conversationId': conversationId,
+      });
+      
+      // Remove from local map
+      _conversations.remove(conversationId);
+      
+      LeapLogger.info('Disposed conversation: $conversationId');
+      
+    } catch (e) {
+      LeapLogger.error('Failed to dispose conversation: $conversationId', e);
+      throw FlutterLeapSdkException('Failed to dispose conversation: $e', 'CONVERSATION_ERROR');
+    }
+  }
+  
+  /// Internal method for conversation response generation
+  static Future<String> generateConversationResponse({
+    required String conversationId,
+    required String message,
+    required List<ChatMessage> history,
+    GenerationOptions? generationOptions,
+  }) async {
+    try {
+      final String result = await _channel.invokeMethod('generateConversationResponse', {
+        'conversationId': conversationId,
+        'message': message,
+        'history': history.map((m) => m.toMap()).toList(),
+        'generationOptions': generationOptions?.toMap(),
+      });
+      
+      return result;
+      
+    } on PlatformException catch (e) {
+      LeapLogger.error('Failed to generate conversation response', e);
+      throw GenerationException('Failed to generate response: ${e.message}', e.code);
+    }
+  }
+  
+  /// Internal method for conversation streaming response generation
+  static Stream<String> generateConversationResponseStream({
+    required String conversationId,
+    required String message,
+    required List<ChatMessage> history,
+    GenerationOptions? generationOptions,
+  }) async* {
+    try {
+      await _channel.invokeMethod('generateConversationResponseStream', {
+        'conversationId': conversationId,
+        'message': message,
+        'history': history.map((m) => m.toMap()).toList(),
+        'generationOptions': generationOptions?.toMap(),
+      });
+
+      await for (final data in _streamChannel.receiveBroadcastStream()) {
+        if (data is String) {
+          if (data == '<STREAM_END>') {
+            break;
+          } else {
+            yield data;
+          }
+        }
+      }
+      
+    } on PlatformException catch (e) {
+      LeapLogger.error('Failed to generate conversation streaming response', e);
+      throw GenerationException('Failed to generate streaming response: ${e.message}', e.code);
+    }
   }
 }

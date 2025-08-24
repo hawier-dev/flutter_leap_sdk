@@ -1,0 +1,291 @@
+import 'dart:convert';
+import 'flutter_leap_sdk_service.dart';
+import 'models.dart';
+import 'exceptions.dart';
+import 'leap_logger.dart';
+
+/// Represents a conversation session with persistent history and context.
+///
+/// This class manages a stateful conversation with the LEAP model, maintaining
+/// message history and providing methods for generating responses within context.
+/// It mirrors the Conversation API from the native LEAP SDKs.
+class Conversation {
+  /// Unique identifier for this conversation session
+  final String id;
+  
+  /// List of messages in this conversation
+  final List<ChatMessage> _history = [];
+  
+  /// Optional system prompt that sets the context for this conversation
+  String? _systemPrompt;
+  
+  /// Whether this conversation is currently generating a response
+  bool _isGenerating = false;
+  
+  /// Generation options to use for this conversation
+  GenerationOptions? _generationOptions;
+
+  /// Create a new conversation with optional system prompt
+  Conversation({
+    required this.id,
+    String? systemPrompt,
+    GenerationOptions? generationOptions,
+  }) : _systemPrompt = systemPrompt,
+       _generationOptions = generationOptions {
+    
+    // Add system message if provided
+    if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
+      _history.add(ChatMessage.system(systemPrompt));
+    }
+    
+    LeapLogger.info('Created conversation: $id');
+  }
+
+
+  /// Get read-only view of conversation history
+  List<ChatMessage> get history => List.unmodifiable(_history);
+  
+  /// Get the system prompt for this conversation
+  String? get systemPrompt => _systemPrompt;
+  
+  /// Whether the conversation is currently generating a response
+  bool get isGenerating => _isGenerating;
+  
+  /// Current generation options
+  GenerationOptions? get generationOptions => _generationOptions;
+  
+  /// Number of messages in the conversation
+  int get messageCount => _history.length;
+  
+  /// Check if conversation has any user/assistant messages (excluding system)
+  bool get hasMessages => _history.any((m) => m.role != MessageRole.system);
+
+  /// Update the system prompt for this conversation
+  /// 
+  /// Note: This will clear the conversation history as the context changes
+  void updateSystemPrompt(String? systemPrompt) {
+    if (_systemPrompt == systemPrompt) return;
+    
+    _systemPrompt = systemPrompt;
+    _history.clear();
+    
+    if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
+      _history.add(ChatMessage.system(systemPrompt));
+    }
+    
+    LeapLogger.info('Updated system prompt for conversation: $id');
+  }
+
+  /// Update generation options for this conversation
+  void updateGenerationOptions(GenerationOptions? options) {
+    _generationOptions = options;
+    LeapLogger.info('Updated generation options for conversation: $id');
+  }
+
+  /// Add a message to the conversation history
+  void addMessage(ChatMessage message) {
+    _history.add(message);
+    LeapLogger.info('Added ${message.role.name} message to conversation: $id');
+  }
+
+  /// Generate a response to a user message
+  /// 
+  /// Adds the user message to history and generates an assistant response.
+  /// Returns the assistant's response text.
+  Future<String> generateResponse(String userMessage) async {
+    if (_isGenerating) {
+      throw GenerationException('Conversation is already generating a response', 'GENERATION_IN_PROGRESS');
+    }
+
+    if (userMessage.trim().isEmpty) {
+      throw GenerationException('Message cannot be empty', 'INVALID_INPUT');
+    }
+
+    _isGenerating = true;
+    
+    try {
+      // Add user message to history
+      final userMsg = ChatMessage.user(userMessage);
+      addMessage(userMsg);
+
+      LeapLogger.info('Generating response for conversation: $id (${userMessage.length} chars)');
+
+      // Generate response using the service
+      final response = await FlutterLeapSdkService.generateConversationResponse(
+        conversationId: id,
+        message: userMessage,
+        history: _history,
+        generationOptions: _generationOptions,
+      );
+
+      // Add assistant response to history
+      final assistantMsg = ChatMessage.assistant(response);
+      addMessage(assistantMsg);
+
+      LeapLogger.info('Generated response for conversation: $id (${response.length} chars)');
+      
+      return response;
+      
+    } finally {
+      _isGenerating = false;
+    }
+  }
+
+  /// Generate a streaming response to a user message
+  /// 
+  /// Adds the user message to history and generates a streaming assistant response.
+  /// Yields response chunks as they are generated.
+  Stream<String> generateResponseStream(String userMessage) async* {
+    if (_isGenerating) {
+      throw GenerationException('Conversation is already generating a response', 'GENERATION_IN_PROGRESS');
+    }
+
+    if (userMessage.trim().isEmpty) {
+      throw GenerationException('Message cannot be empty', 'INVALID_INPUT');
+    }
+
+    _isGenerating = true;
+    
+    try {
+      // Add user message to history
+      final userMsg = ChatMessage.user(userMessage);
+      addMessage(userMsg);
+
+      LeapLogger.info('Starting streaming response for conversation: $id (${userMessage.length} chars)');
+
+      String fullResponse = '';
+      
+      // Generate streaming response using the service
+      await for (final chunk in FlutterLeapSdkService.generateConversationResponseStream(
+        conversationId: id,
+        message: userMessage,
+        history: _history,
+        generationOptions: _generationOptions,
+      )) {
+        fullResponse += chunk;
+        yield chunk;
+      }
+
+      // Add complete assistant response to history
+      if (fullResponse.isNotEmpty) {
+        final assistantMsg = ChatMessage.assistant(fullResponse);
+        addMessage(assistantMsg);
+      }
+
+      LeapLogger.info('Completed streaming response for conversation: $id (${fullResponse.length} chars)');
+      
+    } finally {
+      _isGenerating = false;
+    }
+  }
+
+  /// Clear all messages from the conversation (except system prompt)
+  void clearHistory() {
+    final systemMessage = _history.where((m) => m.role == MessageRole.system).firstOrNull;
+    _history.clear();
+    
+    if (systemMessage != null) {
+      _history.add(systemMessage);
+    }
+    
+    LeapLogger.info('Cleared history for conversation: $id');
+  }
+
+  /// Remove the last message from the conversation
+  /// 
+  /// Returns the removed message, or null if history is empty or only contains system message
+  ChatMessage? removeLastMessage() {
+    // Don't remove system messages
+    final nonSystemMessages = _history.where((m) => m.role != MessageRole.system).toList();
+    if (nonSystemMessages.isEmpty) return null;
+    
+    final lastMessage = nonSystemMessages.last;
+    _history.remove(lastMessage);
+    
+    LeapLogger.info('Removed last ${lastMessage.role.name} message from conversation: $id');
+    return lastMessage;
+  }
+
+  /// Export conversation to JSON string
+  String toJson() {
+    final data = {
+      'id': id,
+      'systemPrompt': _systemPrompt,
+      'generationOptions': _generationOptions?.toMap(),
+      'history': _history.map((m) => m.toMap()).toList(),
+      'createdAt': DateTime.now().millisecondsSinceEpoch,
+    };
+    
+    return json.encode(data);
+  }
+
+  /// Create conversation from JSON string
+  static Conversation fromJson(String jsonString) {
+    final data = json.decode(jsonString);
+    
+    final conversation = Conversation(
+      id: data['id'],
+      systemPrompt: data['systemPrompt'],
+      generationOptions: data['generationOptions'] != null 
+          ? GenerationOptions.fromMap(data['generationOptions'])
+          : null,
+    );
+    
+    // Clear the auto-added system message and restore from JSON
+    conversation._history.clear();
+    
+    // Restore history
+    if (data['history'] != null) {
+      for (final msgData in data['history']) {
+        conversation._history.add(ChatMessage.fromMap(msgData));
+      }
+    }
+    
+    return conversation;
+  }
+
+  /// Export conversation to a map
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'systemPrompt': _systemPrompt,
+      'generationOptions': _generationOptions?.toMap(),
+      'history': _history.map((m) => m.toMap()).toList(),
+      'messageCount': messageCount,
+      'hasMessages': hasMessages,
+      'isGenerating': _isGenerating,
+    };
+  }
+
+  /// Get conversation statistics
+  Map<String, dynamic> getStats() {
+    final messagesByRole = <String, int>{};
+    for (final message in _history) {
+      messagesByRole[message.role.name] = (messagesByRole[message.role.name] ?? 0) + 1;
+    }
+    
+    return {
+      'id': id,
+      'messageCount': messageCount,
+      'messagesByRole': messagesByRole,
+      'hasSystemPrompt': _systemPrompt != null,
+      'hasGenerationOptions': _generationOptions != null,
+      'isGenerating': _isGenerating,
+      'hasMessages': hasMessages,
+    };
+  }
+
+  /// Cancel any ongoing generation
+  Future<void> cancelGeneration() async {
+    if (_isGenerating) {
+      await FlutterLeapSdkService.cancelStreaming();
+      _isGenerating = false;
+      LeapLogger.info('Cancelled generation for conversation: $id');
+    }
+  }
+
+  @override
+  String toString() {
+    return 'Conversation(id: $id, messages: $messageCount, generating: $_isGenerating)';
+  }
+}

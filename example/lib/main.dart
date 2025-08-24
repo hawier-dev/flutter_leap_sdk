@@ -11,9 +11,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'LEAP SDK Demo',
+      title: 'LEAP SDK Chat Demo',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
       home: const ChatScreen(),
@@ -30,127 +30,510 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
-  final TextEditingController _systemPromptController = TextEditingController();
-  String _response = '';
-  bool _isLoading = false;
+  final ScrollController _scrollController = ScrollController();
+  
+  Conversation? _conversation;
+  List<ChatMessage> _messages = [];
+  bool _isTyping = false;
   bool _isModelLoaded = false;
   String _status = 'No model loaded';
+  
+  // Model management
   String? _currentDownloadTaskId;
-  bool _hasText = false;
-  String _fileOperationStatus = '';
   double _downloadProgress = 0.0;
-  bool _isFinalizingDownload = false;
   String _downloadSpeed = '';
-  int _downloadedBytes = 0;
-  int _totalBytes = 0;
+  bool _showSettings = false;
 
   @override
   void initState() {
     super.initState();
-    _messageController.addListener(() {
-      setState(() {
-        _hasText = _messageController.text.isNotEmpty;
-      });
-    });
-    
-    // Initialize the service and logging
     FlutterLeapSdkService.initialize();
-    
     _checkModelStatus();
   }
 
-  void _clearResponse() {
-    setState(() {
-      _response = '';
-    });
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _checkModelStatus() async {
     try {
       setState(() {
         _status = 'Checking model status...';
-        _fileOperationStatus = 'Loading model information...';
       });
 
       final isLoaded = await FlutterLeapSdkService.checkModelLoaded();
-      final modelExists = await FlutterLeapSdkService.checkModelExists(
-        'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
-      );
       final downloadedModels = await FlutterLeapSdkService.getDownloadedModels();
 
       setState(() {
         _isModelLoaded = isLoaded;
-        _fileOperationStatus = '';
         
         if (isLoaded) {
-          _status = '✅ Model loaded and ready (${FlutterLeapSdkService.currentModel})';
-        } else if (modelExists) {
-          _status = '📁 Model downloaded, click "Load Model" to use';
+          _status = '✅ Model ready: ${FlutterLeapSdkService.currentModel}';
         } else if (downloadedModels.isNotEmpty) {
-          _status = '📋 ${downloadedModels.length} model(s) available:\n${downloadedModels.map((f) => '• ${FlutterLeapSdkService.getModelDisplayName(f)}').join('\n')}';
+          _status = '📁 ${downloadedModels.length} model(s) available - Load to start chatting';
         } else {
-          _status = '⬇️ No models found. Click "Download Model" to start.';
+          _status = '⬇️ No models found - Download to start chatting';
         }
       });
     } catch (e) {
       setState(() {
         _status = '❌ Error: ${e.toString().split('\n').first}';
-        _fileOperationStatus = '';
       });
     }
   }
 
-  Future<void> _downloadModel() async {
-    setState(() {
-      _isLoading = true;
-      _status = '🔄 Starting download...';
-    });
-
+  Future<void> _createConversation() async {
     try {
+      final conversation = await FlutterLeapSdkService.createConversation(
+        systemPrompt: "You are a helpful AI assistant. Be concise and friendly.",
+        generationOptions: GenerationOptions.balanced(),
+      );
+      
+      setState(() {
+        _conversation = conversation;
+        _messages = [];
+      });
+    } catch (e) {
+      _showErrorDialog('Failed to create conversation: $e');
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    if (_messageController.text.trim().isEmpty || _conversation == null) return;
+    
+    final userMessage = _messageController.text.trim();
+    _messageController.clear();
+    
+    setState(() {
+      _messages.add(ChatMessage.user(userMessage));
+      _isTyping = true;
+    });
+    
+    _scrollToBottom();
+    
+    try {
+      String assistantResponse = '';
+      
+      await for (final chunk in _conversation!.generateResponseStream(userMessage)) {
+        setState(() {
+          if (_messages.isEmpty || _messages.last.role != MessageRole.assistant) {
+            _messages.add(ChatMessage.assistant(''));
+          }
+          assistantResponse += chunk;
+          _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse);
+        });
+        _scrollToBottom();
+      }
+    } catch (e) {
+      setState(() {
+        _messages.add(ChatMessage.assistant('Error: ${e.toString()}'));
+      });
+    } finally {
+      setState(() {
+        _isTyping = false;
+      });
+      _scrollToBottom();
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openSettings() {
+    setState(() {
+      _showSettings = true;
+    });
+  }
+
+  void _hideSettings() {
+    setState(() {
+      _showSettings = false;
+    });
+  }
+
+  Widget _buildChatInterface() {
+    return Column(
+      children: [
+        // Status bar
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          color: _isModelLoaded ? Colors.green.shade50 : Colors.orange.shade50,
+          child: Row(
+            children: [
+              Icon(
+                _isModelLoaded ? Icons.check_circle : Icons.warning,
+                color: _isModelLoaded ? Colors.green : Colors.orange,
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(_status)),
+              IconButton(
+                icon: const Icon(Icons.settings),
+                onPressed: _openSettings,
+              ),
+            ],
+          ),
+        ),
+        
+        // Messages
+        Expanded(
+          child: _conversation == null 
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey.shade400),
+                    const SizedBox(height: 16),
+                    Text(
+                      _isModelLoaded 
+                        ? 'Ready to chat!\nTap the message button to start.'
+                        : 'Load a model to start chatting',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Colors.grey.shade600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              )
+            : ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: _messages.length + (_isTyping ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index == _messages.length && _isTyping) {
+                    return _buildTypingIndicator();
+                  }
+                  
+                  final message = _messages[index];
+                  return _buildMessageBubble(message);
+                },
+              ),
+        ),
+        
+        // Input
+        if (_isModelLoaded) _buildMessageInput(),
+      ],
+    );
+  }
+
+  Widget _buildMessageBubble(ChatMessage message) {
+    final isUser = message.role == MessageRole.user;
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!isUser) ...[
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.purple.shade100,
+              child: Icon(Icons.android, size: 16, color: Colors.purple.shade700),
+            ),
+            const SizedBox(width: 8),
+          ],
+          
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: isUser ? Colors.blue.shade500 : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(20).copyWith(
+                  bottomLeft: Radius.circular(isUser ? 20 : 4),
+                  bottomRight: Radius.circular(isUser ? 4 : 20),
+                ),
+              ),
+              child: Text(
+                message.content,
+                style: TextStyle(
+                  color: isUser ? Colors.white : Colors.black87,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+          
+          if (isUser) ...[
+            const SizedBox(width: 8),
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.blue.shade100,
+              child: Icon(Icons.person, size: 16, color: Colors.blue.shade700),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTypingIndicator() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: Colors.purple.shade100,
+            child: Icon(Icons.android, size: 16, color: Colors.purple.shade700),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+                bottomRight: Radius.circular(20),
+                bottomLeft: Radius.circular(4),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ...List.generate(3, (index) => 
+                  Container(
+                    width: 8,
+                    height: 8,
+                    margin: EdgeInsets.only(right: index < 2 ? 4 : 0),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageInput() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          if (_conversation == null)
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _createConversation,
+                icon: const Icon(Icons.chat),
+                label: const Text('Start New Chat'),
+              ),
+            )
+          else ...[
+            Expanded(
+              child: TextField(
+                controller: _messageController,
+                decoration: InputDecoration(
+                  hintText: 'Type a message...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(25),
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+                onSubmitted: (_) => _sendMessage(),
+                enabled: !_isTyping,
+              ),
+            ),
+            const SizedBox(width: 8),
+            FloatingActionButton(
+              onPressed: _isTyping ? null : _sendMessage,
+              mini: true,
+              child: Icon(_isTyping ? Icons.hourglass_empty : Icons.send),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsPanel() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              const Icon(Icons.settings, size: 24),
+              const SizedBox(width: 8),
+              const Text('Model Settings', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: _hideSettings,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Model Status
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Current Status', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(_status),
+                ],
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Download Progress
+          if (_currentDownloadTaskId != null) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Download Progress', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(value: _downloadProgress / 100),
+                    const SizedBox(height: 8),
+                    Text('${_downloadProgress.toInt()}% - $_downloadSpeed'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          
+          // Actions
+          Expanded(
+            child: Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _isModelLoaded ? null : _downloadModel,
+                    icon: const Icon(Icons.download),
+                    label: const Text('Download Model (LFM2-350M)'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _isModelLoaded ? null : _loadModel,
+                    icon: const Icon(Icons.upload_file),
+                    label: const Text('Load Model'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                
+                if (_isModelLoaded) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _unloadModel,
+                      icon: const Icon(Icons.eject),
+                      label: const Text('Unload Model'),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                
+                if (_currentDownloadTaskId != null) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _cancelDownload,
+                      icon: const Icon(Icons.cancel),
+                      label: const Text('Cancel Download'),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadModel() async {
+    try {
+      setState(() {
+        _downloadProgress = 0.0;
+        _downloadSpeed = '';
+      });
+
       final taskId = await FlutterLeapSdkService.downloadModel(
         modelName: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
         onProgress: (progress) {
           setState(() {
             _downloadProgress = progress.percentage;
-            _downloadedBytes = progress.downloaded;
-            _totalBytes = progress.total;
             _downloadSpeed = progress.speed;
             
             if (progress.percentage >= 100.0) {
-              _status = '✅ Download completed!';
               _currentDownloadTaskId = null;
-              _isFinalizingDownload = false;
-              _downloadProgress = 0.0;
-              _downloadSpeed = '';
-              Future.delayed(const Duration(milliseconds: 500), _checkModelStatus);
-            } else if (progress.percentage >= 99.0) {
-              _status = '🔄 Finalizing download...';
-              _isFinalizingDownload = true;
-            } else {
-              final percent = progress.percentage.toStringAsFixed(1);
-              final downloadedMB = (_downloadedBytes / 1024 / 1024).toStringAsFixed(1);
-              final totalMB = (_totalBytes / 1024 / 1024).toStringAsFixed(1);
-              _status = '📥 Downloading: $percent% ($downloadedMB/$totalMB MB)';
-              _isFinalizingDownload = false;
+              _checkModelStatus();
             }
           });
         },
       );
 
-      if (taskId != null) {
+      setState(() {
         _currentDownloadTaskId = taskId;
-      }
+      });
     } catch (e) {
-      setState(() {
-        _status = '❌ Download failed: ${e.toString().split('\n').first}';
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-        _downloadProgress = 0.0;
-        _downloadSpeed = '';
-        _isFinalizingDownload = false;
-      });
+      _showErrorDialog('Download failed: $e');
     }
   }
 
@@ -159,457 +542,70 @@ class _ChatScreenState extends State<ChatScreen> {
       try {
         await FlutterLeapSdkService.cancelDownload(_currentDownloadTaskId!);
         setState(() {
-          _status = '⏹️ Download cancelled';
           _currentDownloadTaskId = null;
           _downloadProgress = 0.0;
           _downloadSpeed = '';
-          _isFinalizingDownload = false;
         });
       } catch (e) {
-        setState(() {
-          _status = '❌ Failed to cancel download';
-          _downloadProgress = 0.0;
-          _downloadSpeed = '';
-          _isFinalizingDownload = false;
-        });
+        _showErrorDialog('Failed to cancel download: $e');
       }
     }
   }
 
   Future<void> _loadModel() async {
-    setState(() {
-      _isLoading = true;
-      _status = '🔄 Loading model...';
-    });
-
     try {
-      final modelExists = await FlutterLeapSdkService.checkModelExists(
-        'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
-      );
-
-      if (!modelExists) {
-        setState(() {
-          _status = '❌ Model not found! Please download first.';
-        });
-        return;
-      }
+      setState(() {
+        _status = 'Loading model...';
+      });
 
       await FlutterLeapSdkService.loadModel(
         modelPath: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
       );
-
-      final isLoaded = await FlutterLeapSdkService.checkModelLoaded();
-      setState(() {
-        _isModelLoaded = isLoaded;
-        _status = isLoaded 
-          ? '✅ Model loaded successfully!' 
-          : '❌ Model loading failed';
-      });
+      
+      await _checkModelStatus();
+      
+      if (_conversation == null && _isModelLoaded) {
+        await _createConversation();
+      }
     } catch (e) {
-      setState(() {
-        _status = '❌ Loading failed: ${e.toString().split('\n').first}';
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      _showErrorDialog('Failed to load model: $e');
+      _checkModelStatus();
     }
   }
 
-  Future<void> _generateResponse() async {
-    if (_messageController.text.isEmpty) return;
-
-    final userMessage = _messageController.text;
-    _messageController.clear();
-    setState(() {
-      _hasText = false;
-      _isLoading = true;
-      _response = '';
-      _fileOperationStatus = 'Generating response...';
-    });
-
+  Future<void> _unloadModel() async {
     try {
-      final systemPrompt = _systemPromptController.text.trim();
-      final response = await FlutterLeapSdkService.generateResponse(
-        userMessage, 
-        systemPrompt: systemPrompt.isEmpty ? null : systemPrompt,
-      );
+      await FlutterLeapSdkService.unloadModel();
       setState(() {
-        _response = response;
-        _fileOperationStatus = '';
+        _conversation = null;
+        _messages.clear();
       });
+      await _checkModelStatus();
     } catch (e) {
-      setState(() {
-        _response = 'Error: $e';
-        _fileOperationStatus = '';
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-        _fileOperationStatus = '';
-      });
+      _showErrorDialog('Failed to unload model: $e');
     }
-  }
-
-  void _generateStreamingResponse() {
-    if (_messageController.text.isEmpty) return;
-
-    final userMessage = _messageController.text;
-    _messageController.clear();
-    setState(() {
-      _hasText = false;
-      _isLoading = true;
-      _response = '';
-      _fileOperationStatus = 'Streaming response...';
-    });
-
-    final systemPrompt = _systemPromptController.text.trim();
-    FlutterLeapSdkService.generateResponseStream(
-      userMessage,
-      systemPrompt: systemPrompt.isEmpty ? null : systemPrompt,
-    ).listen(
-      (chunk) {
-        setState(() {
-          _response += chunk;
-          if (_response.isNotEmpty) {
-            _fileOperationStatus = 'Streaming in progress...';
-          }
-        });
-      },
-      onError: (error) {
-        setState(() {
-          _response = 'Streaming error: $error';
-          _isLoading = false;
-          _fileOperationStatus = '';
-        });
-      },
-      onDone: () {
-        setState(() {
-          _isLoading = false;
-          _fileOperationStatus = '';
-        });
-      },
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('LEAP SDK Demo'),
+        title: const Text('LEAP SDK Chat'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          if (_conversation != null)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () {
+                setState(() {
+                  _messages.clear();
+                });
+                _createConversation();
+              },
+            ),
+        ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Status Card
-            Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Model Status',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: _checkModelStatus,
-                          icon: const Icon(Icons.refresh),
-                          tooltip: 'Refresh Status',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12.0),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _status,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                    if (_fileOperationStatus.isNotEmpty) ...[                      
-                      const SizedBox(height: 8),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(8.0),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _fileOperationStatus,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (_currentDownloadTaskId != null && _downloadProgress > 0) ...[
-                      const SizedBox(height: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Download Progress',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              Text(
-                                '${_downloadProgress.toStringAsFixed(1)}%',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          LinearProgressIndicator(
-                            value: _downloadProgress / 100,
-                            backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              _isFinalizingDownload
-                                  ? Colors.orange
-                                  : Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                          if (_downloadSpeed.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              'Speed: $_downloadSpeed',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            // Model Actions
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isLoading ? null : _downloadModel,
-                    icon: const Icon(Icons.download),
-                    label: const Text('Download'),
-                  ),
-                ),
-                if (_currentDownloadTaskId != null) ...[
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: _isLoading ? null : _cancelDownload,
-                    icon: const Icon(Icons.stop),
-                    label: const Text('Cancel'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ],
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isLoading ? null : _loadModel,
-                    icon: const Icon(Icons.memory),
-                    label: const Text('Load'),
-                  ),
-                ),
-              ],
-            ),
-            // File Operation Status
-            if (_fileOperationStatus.isNotEmpty)
-              Card(
-                elevation: 1,
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _fileOperationStatus,
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            // Chat Interface
-            const SizedBox(height: 24),
-            Text(
-              'Chat with Model',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _systemPromptController,
-              decoration: InputDecoration(
-                labelText: 'System Prompt (optional)',
-                hintText: 'You are a helpful assistant...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                prefixIcon: const Icon(Icons.settings),
-              ),
-              maxLines: 2,
-              enabled: _isModelLoaded && !_isLoading,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _messageController,
-              decoration: InputDecoration(
-                labelText: 'Enter your message',
-                hintText: 'Ask me anything...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                prefixIcon: const Icon(Icons.chat_bubble_outline),
-              ),
-              maxLines: 3,
-              enabled: _isModelLoaded && !_isLoading,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: (_isModelLoaded && !_isLoading && _hasText)
-                        ? _generateResponse
-                        : null,
-                    icon: const Icon(Icons.send),
-                    label: const Text('Send'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: (_isModelLoaded && !_isLoading && _hasText)
-                        ? _generateStreamingResponse
-                        : null,
-                    icon: const Icon(Icons.stream),
-                    label: const Text('Stream'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            // Response Area
-            const SizedBox(height: 16),
-            Expanded(
-              child: Card(
-                elevation: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.chat,
-                            size: 18,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Response',
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Spacer(),
-                          if (_response.isNotEmpty)
-                            IconButton(
-                              onPressed: _clearResponse,
-                              icon: const Icon(Icons.clear),
-                              tooltip: 'Clear response',
-                            ),
-                          if (_isLoading)
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                        ],
-                      ),
-                      const Divider(),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          child: Text(
-                            _response.isEmpty
-                                ? 'Model response will appear here...'
-                                : _response,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      body: _showSettings ? _buildSettingsPanel() : _buildChatInterface(),
     );
-  }
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    super.dispose();
   }
 }
