@@ -9,16 +9,22 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
     
     // Model management
     private var modelRunner: ModelRunner?
-    private var isModelLoaded = false
-    private var currentModelPath: String?
-    private var activeStreamingTask: Task<Void, Never>?
     
     // Conversation management
     private var conversations: [String: Conversation] = [:]
     private var conversationGenerationOptions: [String: [String: Any]] = [:]
     
     // Function calling support
-    private var conversationFunctions: [String: [String: [String: Any]]] = [:]
+    private var conversationFunctions: [String: [String: LeapFunction]] = [:]
+    
+    // Streaming management
+    private var activeStreamingTask: Task<Void, Never>?
+    private var shouldCancelStreaming = false
+    
+    // Temporary buffer for streaming data when EventSink is not ready
+    private var pendingStreamData: [Any] = []
+    private let streamDataLock = NSLock()
+    
     
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = FlutterLeapSdkPlugin()
@@ -35,434 +41,377 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
     }
     
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        print("Flutter LEAP SDK iOS: Received method call: \(call.method)")
-        
+        // Send debug info through Flutter channel instead of print
+        NSLog("🚨 iOS DEBUG: Method called: \(call.method)")
         switch call.method {
         case "loadModel":
-            loadModel(call: call, result: result)
+            handleLoadModel(call: call, result: result)
         case "generateResponse":
-            generateResponse(call: call, result: result)
+            handleGenerateResponse(call: call, result: result)
         case "generateResponseStream":
-            startStreamingResponse(call: call, result: result)
+            handleGenerateResponseStream(call: call, result: result)
         case "cancelStreaming":
-            cancelStreaming(result: result)
+            handleCancelStreaming(call: call, result: result)
         case "isModelLoaded":
-            result(isModelLoaded)
+            result(modelRunner != nil)
         case "unloadModel":
-            unloadModel(result: result)
+            handleUnloadModel(call: call, result: result)
         case "createConversation":
-            createConversation(call: call, result: result)
+            handleCreateConversation(call: call, result: result)
         case "generateConversationResponse":
-            generateConversationResponse(call: call, result: result)
+            handleGenerateConversationResponse(call: call, result: result)
         case "generateConversationResponseStream":
-            generateConversationResponseStream(call: call, result: result)
+            handleGenerateConversationResponseStream(call: call, result: result)
         case "disposeConversation":
-            disposeConversation(call: call, result: result)
-        case "registerFunction":
-            registerFunction(call: call, result: result)
-        case "unregisterFunction":
-            unregisterFunction(call: call, result: result)
-        case "executeFunction":
-            executeFunction(call: call, result: result)
-        case "checkModelExists":
-            checkModelExists(call: call, result: result)
-        case "checkModelLoaded":
-            checkModelLoaded(call: call, result: result)
-        case "currentLoadedModel":
-            currentLoadedModel(result: result)
-        case "getActiveConversationIds":
-            getActiveConversationIds(result: result)
+            handleDisposeConversation(call: call, result: result)
         case "generateResponseStructuredStream":
-            generateResponseStructuredStream(call: call, result: result)
+            handleGenerateResponseStructuredStream(call: call, result: result)
+        case "registerFunction":
+            handleRegisterFunction(call: call, result: result)
+        case "unregisterFunction":
+            handleUnregisterFunction(call: call, result: result)
+        case "executeFunction":
+            handleExecuteFunction(call: call, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
     }
     
-    // Helper function to convert ModelLoadingOptions (currently unused by native SDK)
-    private func createNativeModelLoadingOptions(from options: [String: Any]?) -> Any? {
-        // Note: Native LEAP SDK may not support loading options yet
-        // This is prepared for future compatibility
-        return nil // For now, use default loading
-    }
+    // MARK: - Model Management
     
-    private func loadModel(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    private func handleLoadModel(call: FlutterMethodCall, result: @escaping FlutterResult) {
         guard let args = call.arguments as? [String: Any],
               let modelPath = args["modelPath"] as? String else {
-            result(FlutterError(code: "INVALID_ARGUMENTS", message: "Model path is required", details: nil))
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "modelPath is required", details: nil))
             return
         }
         
-        let options = args["options"] as? [String: Any]
-        
-        // Validate input
-        guard !modelPath.isEmpty else {
-            result(FlutterError(code: "INVALID_ARGUMENTS", message: "Model path cannot be empty", details: nil))
-            return
-        }
-        
-        // Secure logging - only log filename
-        let fileName = URL(fileURLWithPath: modelPath).lastPathComponent
-        print("Flutter LEAP SDK iOS: Loading model: \(fileName)")
-        
-        // Perform file validation on background queue
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            
-            let validationResult = self.validateModelFile(at: modelPath)
-            
-            guard validationResult.isValid else {
-                DispatchQueue.main.async {
-                    result(FlutterError(code: validationResult.errorCode, 
-                                      message: validationResult.errorMessage, 
+        Task {
+            do {
+                // Unload existing model if any
+                modelRunner = nil
+                
+                // Load new model
+                let modelURL = URL(fileURLWithPath: modelPath)
+                let runner = try await Leap.load(url: modelURL)
+                
+                await MainActor.run {
+                    self.modelRunner = runner
+                    result("Model loaded successfully")
+                }
+                
+                print("✅ Flutter LEAP SDK iOS: Model loaded successfully")
+            } catch {
+                await MainActor.run {
+                    result(FlutterError(code: "MODEL_LOADING_ERROR", 
+                                      message: "Error loading model: \(error.localizedDescription)", 
                                       details: nil))
                 }
-                return
-            }
-            
-            // Log file info securely
-            if let fileSize = validationResult.fileSize {
-                print("Flutter LEAP SDK iOS: File size: \(self.formatFileSize(fileSize))")
-            }
-            
-            // Unload existing model first
-            self.modelRunner = nil
-            self.isModelLoaded = false
-            
-            // Load model on background task
-            Task {
-                do {
-                    let modelURL = URL(fileURLWithPath: modelPath)
-                    
-                    self.modelRunner = try await Leap.load(url: modelURL)
-                    self.isModelLoaded = true
-                    self.currentModelPath = modelPath
-                    
-                    print("Flutter LEAP SDK iOS: Model loaded successfully")
-                    
-                    DispatchQueue.main.async {
-                        result("Model loaded successfully")
-                    }
-                } catch {
-                    print("Flutter LEAP SDK iOS: Model loading failed: \(type(of: error))")
-                    print("Flutter LEAP SDK iOS: Error: \(error.localizedDescription)")
-                    
-                    DispatchQueue.main.async {
-                        let errorMessage = self.formatLeapError(error)
-                        result(FlutterError(code: "MODEL_LOADING_ERROR", 
-                                          message: errorMessage, 
-                                          details: nil))
-                    }
-                }
+                print("❌ Flutter LEAP SDK iOS: Model loading failed - \(error)")
             }
         }
     }
     
-    private struct FileValidationResult {
-        let isValid: Bool
-        let errorCode: String
-        let errorMessage: String
-        let fileSize: Int64?
+    private func handleUnloadModel(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        modelRunner = nil
+        
+        // Clear all conversations when model is unloaded
+        conversations.removeAll()
+        conversationGenerationOptions.removeAll()
+        conversationFunctions.removeAll()
+        
+        result("Model unloaded successfully")
+        print("✅ Flutter LEAP SDK iOS: Model unloaded successfully")
     }
     
-    private func validateModelFile(at path: String) -> FileValidationResult {
-        let fileManager = FileManager.default
-        
-        guard fileManager.fileExists(atPath: path) else {
-            return FileValidationResult(
-                isValid: false,
-                errorCode: "MODEL_NOT_FOUND",
-                errorMessage: "Model file not found",
-                fileSize: nil
-            )
-        }
-        
-        guard fileManager.isReadableFile(atPath: path) else {
-            return FileValidationResult(
-                isValid: false,
-                errorCode: "MODEL_NOT_READABLE",
-                errorMessage: "Cannot read model file (check permissions)",
-                fileSize: nil
-            )
-        }
-        
-        // Get file size
-        do {
-            let attributes = try fileManager.attributesOfItem(atPath: path)
-            let fileSize = attributes[.size] as? Int64 ?? 0
-            
-            guard fileSize > 0 else {
-                return FileValidationResult(
-                    isValid: false,
-                    errorCode: "MODEL_EMPTY",
-                    errorMessage: "Model file is empty",
-                    fileSize: fileSize
-                )
-            }
-            
-            return FileValidationResult(
-                isValid: true,
-                errorCode: "",
-                errorMessage: "",
-                fileSize: fileSize
-            )
-        } catch {
-            return FileValidationResult(
-                isValid: false,
-                errorCode: "MODEL_ACCESS_ERROR",
-                errorMessage: "Cannot access model file: \(error.localizedDescription)",
-                fileSize: nil
-            )
-        }
-    }
+    // MARK: - Generation Methods
     
-    private func formatFileSize(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
-    }
-    
-    private func formatLeapError(_ error: Error) -> String {
-        let errorDesc = error.localizedDescription
-        
-        // Provide specific guidance based on error type
-        if errorDesc.contains("34") {
-            return "Model loading failed (Error 34): Incompatible model format or device architecture. Ensure device supports 64-bit architecture and model is compatible with LEAP SDK."
-        } else if errorDesc.contains("load error") {
-            return "Model loading error: Check model compatibility with LEAP SDK version 0.4.0+"
-        } else if errorDesc.contains("memory") || errorDesc.contains("Memory") {
-            return "Model loading failed: Insufficient memory. Try closing other apps or use a smaller model."
+    private func handleGenerateResponse(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let message = args["message"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "message is required", details: nil))
+            return
         }
         
-        return "Model loading failed: \(errorDesc)"
-    }
-    
-    // Helper function to convert Dart GenerationOptions to native GenerationOptions
-    private func createNativeGenerationOptions(from options: [String: Any]?) -> GenerationOptions? {
-        guard let options = options else { return nil }
-        
-        var generationOptions = GenerationOptions()
-        
-        if let temperature = options["temperature"] as? Double {
-            generationOptions.temperature = Float(temperature)
-        }
-        if let topP = options["topP"] as? Double {
-            generationOptions.topP = Float(topP)
-        }
-        if let minP = options["minP"] as? Double {
-            generationOptions.minP = Float(minP)
-        }
-        if let repetitionPenalty = options["repetitionPenalty"] as? Double {
-            generationOptions.repetitionPenalty = Float(repetitionPenalty)
-        }
-        if let jsonSchema = options["jsonSchema"] as? String {
-            generationOptions.jsonSchemaConstraint = jsonSchema
-        }
-        
-        return generationOptions
-    }
-    
-    private func generateResponse(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let runner = modelRunner, isModelLoaded else {
+        guard let runner = modelRunner else {
             result(FlutterError(code: "MODEL_NOT_LOADED", message: "Model is not loaded", details: nil))
             return
         }
         
-        guard let args = call.arguments as? [String: Any],
-              let message = args["message"] as? String else {
-            result(FlutterError(code: "INVALID_ARGUMENTS", message: "Message is required", details: nil))
-            return
-        }
-        
-        let systemPrompt = args["systemPrompt"] as? String ?? ""
-        let generationOptionsMap = args["generationOptions"] as? [String: Any]
-        
-        // Validate input
-        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedMessage.isEmpty else {
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
             return
         }
         
-        guard message.count <= 4096 else {
-            result(FlutterError(code: "INPUT_TOO_LONG", message: "Message too long (max 4096 characters)", details: nil))
-            return
-        }
-        
-        print("Flutter LEAP SDK iOS: Generating response (\(message.count) chars)")
+        let systemPrompt = args["systemPrompt"] as? String ?? ""
         
         Task {
             do {
-                let conversation = Conversation(modelRunner: runner, history: systemPrompt.isEmpty ? [] : [ChatMessage(role: .system, content: [.text(systemPrompt)])])
-                let nativeOptions = createNativeGenerationOptions(from: generationOptionsMap)
+                // Create conversation with optional system prompt
+                let conversation = systemPrompt.isEmpty ? 
+                    Conversation(modelRunner: runner, history: []) :
+                    Conversation(modelRunner: runner, history: [ChatMessage(role: .system, content: [.text(systemPrompt)])])
+                
                 var fullResponse = ""
                 
-                let chatMessage = ChatMessage(role: .user, content: [.text(message)])
-                for try await messageResponse in conversation.generateResponse(message: chatMessage, options: nativeOptions) {
-                    switch messageResponse {
-                    case .chunk(let text):
-                        fullResponse += text
-                    case .reasoningChunk(let text):
-                        fullResponse += text
-                    case .complete(let usage, let info):
-                        print("Flutter LEAP SDK iOS: Generation completed (\(fullResponse.count) chars)")
-                        break
-                    @unknown default:
-                        // Handle any future cases
-                        break
+                // Generate response
+                do {
+                    let userMessage = ChatMessage(role: .user, content: [.text(message)])
+                    for try await response in conversation.generateResponse(message: userMessage) {
+                        switch response {
+                        case .chunk(let text):
+                            fullResponse += text
+                        case .reasoningChunk(let text):
+                            fullResponse += text
+                        case .functionCall(let calls):
+                            print("✅ Flutter LEAP SDK iOS: Function calls received: \(calls.count)")
+                            // Function calls are handled separately in structured streaming
+                        case .complete(let fullText, let completeInfo):
+                            print("✅ Flutter LEAP SDK iOS: Generation completed - \(fullText.count) chars")
+                            break
+                        @unknown default:
+                            print("⚠️ Unknown response type: \(response)")
+                        }
                     }
+                } catch {
+                    throw error
                 }
                 
-                DispatchQueue.main.async {
+                await MainActor.run {
                     result(fullResponse)
                 }
+                
             } catch {
-                print("Flutter LEAP SDK iOS: Error generating response: \(type(of: error))")
-                print("Flutter LEAP SDK iOS: Error details: \(error.localizedDescription)")
-                DispatchQueue.main.async {
+                await MainActor.run {
                     result(FlutterError(code: "GENERATION_ERROR", 
                                       message: "Error generating response: \(error.localizedDescription)", 
                                       details: nil))
                 }
+                print("❌ Flutter LEAP SDK iOS: Generation failed - \(error)")
             }
         }
     }
     
-    private func startStreamingResponse(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let runner = modelRunner, isModelLoaded else {
+    private func handleGenerateResponseStream(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let message = args["message"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "message is required", details: nil))
+            return
+        }
+        
+        guard let runner = modelRunner else {
             result(FlutterError(code: "MODEL_NOT_LOADED", message: "Model is not loaded", details: nil))
             return
         }
         
-        guard let args = call.arguments as? [String: Any],
-              let message = args["message"] as? String else {
-            result(FlutterError(code: "INVALID_ARGUMENTS", message: "Message is required", details: nil))
-            return
-        }
-        
-        let systemPrompt = args["systemPrompt"] as? String ?? ""
-        let generationOptionsMap = args["generationOptions"] as? [String: Any]
-        
-        // Validate input
-        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedMessage.isEmpty else {
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
             return
         }
         
-        guard message.count <= 4096 else {
-            result(FlutterError(code: "INPUT_TOO_LONG", message: "Message too long (max 4096 characters)", details: nil))
-            return
-        }
+        let systemPrompt = args["systemPrompt"] as? String ?? ""
         
-        print("Flutter LEAP SDK iOS: Starting streaming response (\(message.count) chars)")
-        
-        // Cancel any existing streaming task
+        // Cancel any active streaming
         activeStreamingTask?.cancel()
+        shouldCancelStreaming = false
+        
+        result("Streaming started")
         
         activeStreamingTask = Task {
+            // Ensure cleanup happens like Android's finally block
+            defer {
+                self.activeStreamingTask = nil
+                self.shouldCancelStreaming = false
+            }
+            
             do {
-                result("Streaming started")
+                // Create conversation with optional system prompt
+                let conversation = systemPrompt.isEmpty ? 
+                    Conversation(modelRunner: runner, history: []) :
+                    Conversation(modelRunner: runner, history: [ChatMessage(role: .system, content: [.text(systemPrompt)])])
                 
-                let conversation = Conversation(modelRunner: runner, history: systemPrompt.isEmpty ? [] : [ChatMessage(role: .system, content: [.text(systemPrompt)])])
-                let nativeOptions = createNativeGenerationOptions(from: generationOptionsMap)
-                
-                let chatMessage = ChatMessage(role: .user, content: [.text(message)])
-                for try await messageResponse in conversation.generateResponse(message: chatMessage, options: nativeOptions) {
-                    // Check if task was cancelled
-                    if Task.isCancelled { break }
-                    
-                    switch messageResponse {
-                    case .chunk(let text):
-                        if !text.isEmpty {
-                            DispatchQueue.main.async {
-                                self.eventSink?(text)
+                // Generate streaming response
+                do {
+                    let userMessage = ChatMessage(role: .user, content: [.text(message)])
+                    for try await response in conversation.generateResponse(message: userMessage) {
+                        if shouldCancelStreaming || Task.isCancelled {
+                            break
+                        }
+                        
+                        switch response {
+                        case .chunk(let text):
+                            if !text.isEmpty {
+                                await MainActor.run {
+                                    self.eventSink?(text)
+                                }
                             }
-                        }
-                    case .reasoningChunk(let text):
-                        if !text.isEmpty {
-                            DispatchQueue.main.async {
-                                self.eventSink?(text)
+                        case .reasoningChunk(let text):
+                            if !text.isEmpty {
+                                await MainActor.run {
+                                    self.eventSink?(text)
+                                }
                             }
+                        case .functionCall(let calls):
+                            print("✅ Flutter LEAP SDK iOS: Function calls received: \(calls.count)")
+                            // Function calls are handled separately in structured streaming
+                        case .complete(let fullText, let completeInfo):
+                            await MainActor.run {
+                                if let sink = self.eventSink {
+                                    NSLog("🚨 iOS DEBUG: Sending STREAM_END to EventSink")
+                                    sink("<STREAM_END>")
+                                } else {
+                                    NSLog("❌ iOS DEBUG: EventSink is NIL when trying to send STREAM_END!")
+                                }
+                            }
+                            print("✅ Flutter LEAP SDK iOS: Streaming completed - \(fullText.count) chars")
+                            break
+                        @unknown default:
+                            print("⚠️ Unknown response type: \(response)")
                         }
-                    case .complete(let usage, let info):
-                        DispatchQueue.main.async {
-                            self.eventSink?("<STREAM_END>")
-                        }
-                        print("Flutter LEAP SDK iOS: Streaming completed")
-                        break
-                    @unknown default:
-                        // Handle any future cases
-                        break
                     }
+                } catch {
+                    throw error
                 }
                 
             } catch {
-                if error is CancellationError {
-                    print("Flutter LEAP SDK iOS: Streaming was cancelled")
-                } else {
-                    print("Flutter LEAP SDK iOS: Error in streaming: \(type(of: error))")
-                    print("Flutter LEAP SDK iOS: Streaming error details: \(error.localizedDescription)")
-                    DispatchQueue.main.async {
+                if !(error is CancellationError) {
+                    await MainActor.run {
                         self.eventSink?(FlutterError(code: "STREAMING_ERROR", 
                                                    message: "Error generating streaming response: \(error.localizedDescription)", 
                                                    details: nil))
                     }
+                    print("❌ Flutter LEAP SDK iOS: Streaming failed - \(error)")
                 }
             }
         }
     }
     
-    private func cancelStreaming(result: @escaping FlutterResult) {
-        print("Flutter LEAP SDK iOS: Cancelling streaming")
+    private func handleCancelStreaming(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        shouldCancelStreaming = true
         activeStreamingTask?.cancel()
         activeStreamingTask = nil
+        
         result("Streaming cancelled")
+        print("✅ Flutter LEAP SDK iOS: Streaming cancelled")
     }
     
-    private func unloadModel(result: @escaping FlutterResult) {
-        print("Flutter LEAP SDK iOS: Unloading model")
+    private func handleGenerateResponseStructuredStream(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let message = args["message"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "message is required", details: nil))
+            return
+        }
         
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
+        guard let runner = modelRunner else {
+            result(FlutterError(code: "MODEL_NOT_LOADED", message: "Model is not loaded", details: nil))
+            return
+        }
+        
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
+            return
+        }
+        
+        let systemPrompt = args["systemPrompt"] as? String ?? ""
+        
+        // Cancel any active streaming
+        activeStreamingTask?.cancel()
+        shouldCancelStreaming = false
+        
+        result("Streaming started")
+        
+        activeStreamingTask = Task {
+            // Ensure cleanup happens like Android's finally block
+            defer {
+                self.activeStreamingTask = nil
+                self.shouldCancelStreaming = false
+            }
             
-            // Cancel any active streaming
-            self.activeStreamingTask?.cancel()
-            self.activeStreamingTask = nil
-            
-            // Unload model on background thread
-            self.modelRunner = nil
-            self.isModelLoaded = false
-            self.currentModelPath = nil
-            
-            DispatchQueue.main.async {
-                print("Flutter LEAP SDK iOS: Model unloaded successfully")
-                result("Model unloaded successfully")
+            do {
+                // Create conversation with optional system prompt
+                let conversation = systemPrompt.isEmpty ? 
+                    Conversation(modelRunner: runner, history: []) :
+                    Conversation(modelRunner: runner, history: [ChatMessage(role: .system, content: [.text(systemPrompt)])])
+                
+                // Generate streaming response
+                do {
+                    let userMessage = ChatMessage(role: .user, content: [.text(message)])
+                    for try await response in conversation.generateResponse(message: userMessage) {
+                        if shouldCancelStreaming || Task.isCancelled {
+                            break
+                        }
+                        
+                        let responseMap = messageResponseToMap(response)
+                        await MainActor.run {
+                            if let sink = self.eventSink {
+                                NSLog("🚨 iOS DEBUG: Sending response to EventSink: \(responseMap)")
+                                sink(responseMap)
+                            } else {
+                                NSLog("📦 iOS DEBUG: EventSink NIL - buffering data: \(responseMap)")
+                                self.streamDataLock.lock()
+                                self.pendingStreamData.append(responseMap)
+                                NSLog("📦 iOS DEBUG: Buffer size now: \(self.pendingStreamData.count)")
+                                self.streamDataLock.unlock()
+                            }
+                        }
+                        
+                        // Send stream end for Complete responses
+                        if case .complete(_, _) = response {
+                            await MainActor.run {
+                                if let sink = self.eventSink {
+                                    NSLog("🚨 iOS DEBUG: Sending STREAM_END to EventSink")
+                                    sink("<STREAM_END>")
+                                } else {
+                                    NSLog("❌ iOS DEBUG: EventSink is NIL when trying to send STREAM_END!")
+                                }
+                            }
+                            break
+                        }
+                    }
+                } catch {
+                    throw error
+                }
+                
+            } catch {
+                if !(error is CancellationError) {
+                    await MainActor.run {
+                        self.eventSink?(FlutterError(code: "STREAMING_ERROR", 
+                                                   message: "Error generating structured streaming response: \(error.localizedDescription)", 
+                                                   details: nil))
+                    }
+                    print("❌ Flutter LEAP SDK iOS: Structured streaming failed - \(error)")
+                }
             }
         }
     }
     
     // MARK: - Conversation Management
     
-    private func createConversation(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let runner = modelRunner, isModelLoaded else {
-            result(FlutterError(code: "MODEL_NOT_LOADED", message: "Model is not loaded", details: nil))
-            return
-        }
-        
+    private func handleCreateConversation(call: FlutterMethodCall, result: @escaping FlutterResult) {
         guard let args = call.arguments as? [String: Any],
               let conversationId = args["conversationId"] as? String else {
             result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId is required", details: nil))
             return
         }
         
+        guard let runner = modelRunner else {
+            result(FlutterError(code: "MODEL_NOT_LOADED", message: "Model is not loaded", details: nil))
+            return
+        }
+        
+        if conversationId.isEmpty {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId cannot be empty", details: nil))
+            return
+        }
+        
         let systemPrompt = args["systemPrompt"] as? String ?? ""
         let generationOptions = args["generationOptions"] as? [String: Any]
         
-        print("Flutter LEAP SDK iOS: Creating conversation: \(conversationId)")
+        // Create conversation with optional system prompt
+        let conversation = systemPrompt.isEmpty ? 
+            Conversation(modelRunner: runner, history: []) :
+            Conversation(modelRunner: runner, history: [ChatMessage(role: .system, content: [.text(systemPrompt)])])
         
-        // Create conversation
-        let conversation = Conversation(modelRunner: runner, history: systemPrompt.isEmpty ? [] : [ChatMessage(role: .system, content: [.text(systemPrompt)])])
         conversations[conversationId] = conversation
         
         // Store generation options if provided
@@ -471,9 +420,10 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         }
         
         result("Conversation created successfully")
+        print("✅ Flutter LEAP SDK iOS: Created conversation - \(conversationId)")
     }
     
-    private func generateConversationResponse(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    private func handleGenerateConversationResponse(call: FlutterMethodCall, result: @escaping FlutterResult) {
         guard let args = call.arguments as? [String: Any],
               let conversationId = args["conversationId"] as? String,
               let message = args["message"] as? String else {
@@ -486,56 +436,72 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             return
         }
         
-        // Validate input
-        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedMessage.isEmpty else {
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
             return
         }
-        
-        print("Flutter LEAP SDK iOS: Generating conversation response (\(message.count) chars)")
         
         Task {
             do {
-                let storedOptions = conversationGenerationOptions[conversationId]
-                let nativeOptions = createNativeGenerationOptions(from: storedOptions)
                 var fullResponse = ""
                 
-                let chatMessage = ChatMessage(role: .user, content: [.text(message)])
-                for try await messageResponse in conversation.generateResponse(message: chatMessage, options: nativeOptions) {
-                    switch messageResponse {
-                    case .chunk(let text):
-                        fullResponse += text
-                    case .reasoningChunk(let text):
-                        fullResponse += text
-                    case .complete(let usage, let info):
-                        print("Flutter LEAP SDK iOS: Conversation generation completed (\(fullResponse.count) chars)")
-                        break
-                    @unknown default:
-                        break
+                // Generate response
+                do {
+                    let userMessage = ChatMessage(role: .user, content: [.text(message)])
+                    for try await response in conversation.generateResponse(message: userMessage) {
+                        switch response {
+                        case .chunk(let text):
+                            fullResponse += text
+                        case .reasoningChunk(let text):
+                            fullResponse += text
+                        case .functionCall(let calls):
+                            print("✅ Flutter LEAP SDK iOS: Function calls received: \(calls.count)")
+                            // Function calls are handled separately in structured streaming
+                        case .complete(let fullText, let completeInfo):
+                            print("✅ Flutter LEAP SDK iOS: Conversation generation completed - \(fullText.count) chars")
+                            break
+                        @unknown default:
+                            print("⚠️ Unknown response type: \(response)")
+                        }
                     }
+                } catch {
+                    throw error
                 }
                 
-                DispatchQueue.main.async {
+                await MainActor.run {
                     result(fullResponse)
                 }
+                
             } catch {
-                print("Flutter LEAP SDK iOS: Error generating conversation response: \(error.localizedDescription)")
-                DispatchQueue.main.async {
+                await MainActor.run {
                     result(FlutterError(code: "GENERATION_ERROR", 
-                                      message: "Error generating response: \(error.localizedDescription)", 
+                                      message: "Error generating conversation response: \(error.localizedDescription)", 
                                       details: nil))
                 }
+                print("❌ Flutter LEAP SDK iOS: Conversation generation failed - \(error)")
             }
         }
     }
     
-    private func generateConversationResponseStream(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    private func handleGenerateConversationResponseStream(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        NSLog("🚨🚨🚨 iOS DEBUG: handleGenerateConversationResponseStream called! 🚨🚨🚨")
+        NSLog("🚨 iOS DEBUG: activeStreamingTask = \(activeStreamingTask != nil ? "NOT NIL" : "NIL")")
+        NSLog("🚨 iOS DEBUG: shouldCancelStreaming = \(shouldCancelStreaming)")
+        NSLog("🚨 iOS DEBUG: eventSink = \(eventSink != nil ? "VALID" : "NIL")")
+        
         guard let args = call.arguments as? [String: Any],
               let conversationId = args["conversationId"] as? String,
               let message = args["message"] as? String else {
+            NSLog("🚨 iOS DEBUG: Invalid arguments!")
             result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId and message are required", details: nil))
             return
+        }
+        NSLog("🚨 iOS DEBUG: Processing message: '\(message)' for conversation: \(conversationId)")
+        
+        // EventSink might not be available yet - will be set by onListen
+        // Don't fail here, just log and continue
+        if eventSink == nil {
+            NSLog("⚠️ iOS DEBUG: EventSink is NIL at start - waiting for onListen...")
         }
         
         guard let conversation = conversations[conversationId] else {
@@ -543,69 +509,111 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             return
         }
         
-        // Validate input
-        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedMessage.isEmpty else {
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
             return
         }
         
-        print("Flutter LEAP SDK iOS: Starting conversation streaming response (\(message.count) chars)")
+        // Cancel previous streaming and reset state for new message
+        if activeStreamingTask != nil {
+            NSLog("🔍 iOS DEBUG: Cancelling previous streaming task")
+            shouldCancelStreaming = true
+            activeStreamingTask?.cancel()
+            activeStreamingTask = nil
+        }
+        
+        // Reset for new streaming
+        shouldCancelStreaming = false
+        
         result("Streaming started")
         
-        // Cancel any existing streaming
-        activeStreamingTask?.cancel()
-        
         activeStreamingTask = Task {
+            // Ensure cleanup happens like Android's finally block
+            defer {
+                self.activeStreamingTask = nil
+                self.shouldCancelStreaming = false
+            }
+            
             do {
-                let storedOptions = conversationGenerationOptions[conversationId]
-                let nativeOptions = createNativeGenerationOptions(from: storedOptions)
+                print("🔍 iOS DEBUG: Starting conversation.generateResponse for: '\(message)'")
+                print("🔍 iOS DEBUG: Task.isCancelled = \(Task.isCancelled), shouldCancelStreaming = \(shouldCancelStreaming)")
                 
-                let chatMessage = ChatMessage(role: .user, content: [.text(message)])
-                for try await messageResponse in conversation.generateResponse(message: chatMessage, options: nativeOptions) {
-                    // Check for cancellation
-                    try Task.checkCancellation()
+                // Generate streaming response
+                do {
+                    var responseCount = 0
+                    let userMessage = ChatMessage(role: .user, content: [.text(message)])
+                    let responseStream = conversation.generateResponse(message: userMessage)
+                    print("🔍 iOS DEBUG: Created response stream successfully")
                     
-                    switch messageResponse {
-                    case .chunk(let text):
-                        if !text.isEmpty {
-                            DispatchQueue.main.async {
-                                self.eventSink?(text)
+                    for try await response in responseStream {
+                        responseCount += 1
+                        print("🔍 iOS DEBUG: Received response #\(responseCount): \(response)")
+                        
+                        if shouldCancelStreaming || Task.isCancelled {
+                            print("🔍 iOS DEBUG: Breaking due to cancellation - shouldCancel: \(shouldCancelStreaming), isCancelled: \(Task.isCancelled)")
+                            break
+                        }
+                        
+                        let responseMap = messageResponseToMap(response)
+                        await MainActor.run {
+                            if let sink = self.eventSink {
+                                NSLog("🚨 iOS DEBUG: Sending response to EventSink: \(responseMap)")
+                                sink(responseMap)
+                            } else {
+                                NSLog("📦 iOS DEBUG: EventSink NIL - buffering data: \(responseMap)")
+                                self.streamDataLock.lock()
+                                self.pendingStreamData.append(responseMap)
+                                NSLog("📦 iOS DEBUG: Buffer size now: \(self.pendingStreamData.count)")
+                                self.streamDataLock.unlock()
                             }
                         }
-                    case .reasoningChunk(let text):
-                        if !text.isEmpty {
-                            DispatchQueue.main.async {
-                                self.eventSink?(text)
+                        
+                        // Send stream end for Complete responses
+                        if case .complete(_, _) = response {
+                            print("🔍 iOS DEBUG: Received complete response, sending STREAM_END")
+                            await MainActor.run {
+                                if let sink = self.eventSink {
+                                    NSLog("🚨 iOS DEBUG: Sending STREAM_END to EventSink")
+                                    sink("<STREAM_END>")
+                                } else {
+                                    NSLog("❌ iOS DEBUG: EventSink is NIL when trying to send STREAM_END!")
+                                }
                             }
+                            break
                         }
-                    case .complete(let usage, let info):
-                        DispatchQueue.main.async {
+                    }
+                    
+                    // If we exit the loop without responses, that's the problem!
+                    if responseCount == 0 {
+                        print("🚨 iOS DEBUG: NO RESPONSES RECEIVED! Sending STREAM_END anyway")
+                        await MainActor.run {
                             self.eventSink?("<STREAM_END>")
                         }
-                        print("Flutter LEAP SDK iOS: Conversation streaming completed")
-                        break
-                    @unknown default:
-                        break
+                    } else {
+                        print("🔍 iOS DEBUG: Stream finished normally with \(responseCount) responses")
                     }
+                } catch {
+                    print("🔍 iOS DEBUG: Error in generateResponse: \(error)")
+                    throw error
                 }
                 
             } catch {
-                if error is CancellationError {
-                    print("Flutter LEAP SDK iOS: Conversation streaming was cancelled")
-                } else {
-                    print("Flutter LEAP SDK iOS: Error in conversation streaming: \(error.localizedDescription)")
-                    DispatchQueue.main.async {
+                if !(error is CancellationError) {
+                    print("🔍 iOS DEBUG: Exception in conversation streaming: \(error)")
+                    await MainActor.run {
                         self.eventSink?(FlutterError(code: "STREAMING_ERROR", 
-                                                   message: "Error generating streaming response: \(error.localizedDescription)", 
+                                                   message: "Error generating conversation streaming response: \(error.localizedDescription)", 
                                                    details: nil))
                     }
+                    print("❌ Flutter LEAP SDK iOS: Conversation streaming failed - \(error)")
+                } else {
+                    print("🔍 iOS DEBUG: Task was cancelled")
                 }
             }
         }
     }
     
-    private func disposeConversation(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    private func handleDisposeConversation(call: FlutterMethodCall, result: @escaping FlutterResult) {
         guard let args = call.arguments as? [String: Any],
               let conversationId = args["conversationId"] as? String else {
             result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId is required", details: nil))
@@ -616,13 +624,13 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         conversationGenerationOptions.removeValue(forKey: conversationId)
         conversationFunctions.removeValue(forKey: conversationId)
         
-        print("Flutter LEAP SDK iOS: Disposed conversation: \(conversationId)")
         result("Conversation disposed successfully")
+        print("✅ Flutter LEAP SDK iOS: Disposed conversation - \(conversationId)")
     }
     
     // MARK: - Function Calling Support
     
-    private func registerFunction(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    private func handleRegisterFunction(call: FlutterMethodCall, result: @escaping FlutterResult) {
         guard let args = call.arguments as? [String: Any],
               let conversationId = args["conversationId"] as? String,
               let functionName = args["functionName"] as? String,
@@ -631,28 +639,38 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             return
         }
         
-        guard conversations[conversationId] != nil else {
+        guard let conversation = conversations[conversationId] else {
             result(FlutterError(code: "CONVERSATION_NOT_FOUND", message: "Conversation not found: \(conversationId)", details: nil))
             return
         }
         
-        // Initialize conversation functions if not exists
-        if conversationFunctions[conversationId] == nil {
-            conversationFunctions[conversationId] = [:]
+        do {
+            // Initialize conversation functions if not exists
+            if conversationFunctions[conversationId] == nil {
+                conversationFunctions[conversationId] = [:]
+            }
+            
+            // Create LeapFunction from schema
+            let leapFunction = try createLeapFunction(name: functionName, schema: functionSchema)
+            
+            // Store function for later use
+            conversationFunctions[conversationId]![functionName] = leapFunction
+            
+            // Register function with native LEAP SDK conversation
+            conversation.registerFunction(leapFunction)
+            
+            result("Function registered successfully")
+            print("✅ Flutter LEAP SDK iOS: Registered function '\(functionName)' for conversation: \(conversationId)")
+            
+        } catch {
+            result(FlutterError(code: "FUNCTION_REGISTRATION_ERROR", 
+                              message: "Error registering function: \(error.localizedDescription)", 
+                              details: nil))
+            print("❌ Flutter LEAP SDK iOS: Function registration failed - \(error)")
         }
-        
-        // Store function schema for later use
-        conversationFunctions[conversationId]![functionName] = functionSchema
-        
-        // Register function with native LEAP SDK conversation
-        let leapFunction = createLeapFunction(name: functionName, schema: functionSchema)
-        conversation.registerFunction(leapFunction)
-        
-        print("Flutter LEAP SDK iOS: Registered function '\(functionName)' for conversation: \(conversationId)")
-        result("Function registered successfully")
     }
     
-    private func unregisterFunction(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    private func handleUnregisterFunction(call: FlutterMethodCall, result: @escaping FlutterResult) {
         guard let args = call.arguments as? [String: Any],
               let conversationId = args["conversationId"] as? String,
               let functionName = args["functionName"] as? String else {
@@ -668,15 +686,100 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         // Remove from stored functions
         conversationFunctions[conversationId]?.removeValue(forKey: functionName)
         
-        // Note: iOS LEAP SDK doesn't have direct unregisterFunction method
+        // Note: LEAP SDK iOS doesn't have explicit unregister method
         // Functions are automatically unregistered when conversation is disposed
         
-        print("Flutter LEAP SDK iOS: Unregistered function '\(functionName)' from conversation: \(conversationId)")
         result("Function unregistered successfully")
+        print("✅ Flutter LEAP SDK iOS: Unregistered function '\(functionName)' from conversation: \(conversationId)")
     }
     
-    private func createLeapFunction(name: String, schema: [String: Any]) -> LeapFunction {
-        // Convert Flutter function schema to native LEAP SDK LeapFunction
+    private func handleExecuteFunction(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let conversationId = args["conversationId"] as? String,
+              let functionCall = args["functionCall"] as? [String: Any],
+              let functionName = functionCall["name"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId, functionCall, and functionCall.name are required", details: nil))
+            return
+        }
+        
+        guard conversations[conversationId] != nil else {
+            result(FlutterError(code: "CONVERSATION_NOT_FOUND", message: "Conversation not found: \(conversationId)", details: nil))
+            return
+        }
+        
+        // Check if function is registered
+        guard let _ = conversationFunctions[conversationId]?[functionName] else {
+            result(FlutterError(code: "FUNCTION_NOT_FOUND", message: "Function '\(functionName)' is not registered", details: nil))
+            return
+        }
+        
+        let arguments = functionCall["arguments"] as? [String: Any] ?? [:]
+        
+        // Bridge function execution back to Flutter
+        Task {
+            let executionResult = await executeFlutterFunction(name: functionName, arguments: arguments)
+            await MainActor.run {
+                result(executionResult)
+            }
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func messageResponseToMap(_ response: MessageResponse) -> [String: Any] {
+        switch response {
+        case .chunk(let text):
+            return [
+                "type": "chunk",
+                "text": text
+            ]
+        case .reasoningChunk(let text):
+            return [
+                "type": "reasoningChunk", 
+                "reasoning": text
+            ]
+        case .functionCall(let calls):
+            return [
+                "type": "functionCalls",
+                "functionCalls": calls.map { call in
+                    [
+                        "name": call.name,
+                        "arguments": call.arguments
+                    ]
+                }
+            ]
+        case .complete(let fullText, let info):
+            return [
+                "type": "complete", 
+                "fullText": fullText,
+                "finishReason": finishReasonToString(info.finishReason),
+                "stats": info.stats != nil ? [
+                    "promptTokens": info.stats!.promptTokens,
+                    "completionTokens": info.stats!.completionTokens,
+                    "totalTokens": info.stats!.totalTokens,
+                    "tokensPerSecond": info.stats!.tokenPerSecond
+                ] : nil
+            ]
+        @unknown default:
+            return [
+                "type": "unknown",
+                "data": String(describing: response)
+            ]
+        }
+    }
+    
+    private func finishReasonToString(_ reason: GenerationFinishReason) -> String {
+        switch reason {
+        case .stop:
+            return "stop"
+        case .exceed_context:
+            return "length"
+        @unknown default:
+            return "unknown"
+        }
+    }
+    
+    private func createLeapFunction(name: String, schema: [String: Any]) throws -> LeapFunction {
         let description = schema["description"] as? String ?? ""
         let parametersData = schema["parameters"] as? [String: Any] ?? [:]
         let propertiesData = parametersData["properties"] as? [String: Any] ?? [:]
@@ -709,20 +812,20 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         switch type {
         case "string":
             let enumValues = paramData["enum"] as? [String]
-            return .string(enum: enumValues, description: description)
+            return .string(StringType(description: description, enumValues: enumValues))
         case "number":
             let enumValues = paramData["enum"] as? [Double]
-            return .number(enum: enumValues, description: description)
+            return .number(NumberType(description: description, enumValues: enumValues))
         case "integer":
             let enumValues = paramData["enum"] as? [Int]
-            return .integer(enum: enumValues, description: description)
+            return .integer(IntegerType(description: description, enumValues: enumValues))
         case "boolean":
-            return .boolean(description: description)
+            return .boolean(BooleanType(description: description))
         case "array":
             let itemsData = paramData["items"] as? [String: Any] ?? [:]
             let itemType = itemsData["type"] as? String ?? "string"
             let itemParameterType = convertToLeapFunctionParameterType(itemType, itemsData)
-            return .array(items: itemParameterType, description: description)
+            return .array(ArrayType(description: description, itemType: itemParameterType))
         case "object":
             let propertiesData = paramData["properties"] as? [String: Any] ?? [:]
             let requiredList = paramData["required"] as? [String] ?? []
@@ -733,233 +836,72 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                 return convertToLeapFunctionParameterType(propType, propMap)
             }
             
-            return .object(properties: properties, required: requiredList, description: description)
+            return .object(ObjectType(description: description, properties: properties, required: requiredList))
         default:
-            return .string(enum: nil, description: description)
+            return .string(StringType(description: description))
         }
     }
     
     private func executeFlutterFunction(name: String, arguments: [String: Any]) async -> [String: Any] {
         // Bridge function execution back to Flutter
         return await withCheckedContinuation { continuation in
-            DispatchQueue.main.async { [weak self] in
-                self?.methodChannel?.invokeMethod("executeFunctionCallback", arguments: [
+            DispatchQueue.main.async {
+                self.methodChannel?.invokeMethod("executeFunctionCallback", arguments: [
                     "functionName": name,
                     "arguments": arguments
                 ]) { result in
-                    if let resultDict = result as? [String: Any] {
-                        continuation.resume(returning: resultDict)
-                    } else if let error = result as? FlutterError {
-                        continuation.resume(returning: ["error": error.message ?? "Unknown error"])
+                    if let resultMap = result as? [String: Any] {
+                        continuation.resume(returning: resultMap)
                     } else {
-                        continuation.resume(returning: ["error": "Invalid response"])
+                        continuation.resume(returning: ["error": "Invalid response from Flutter"])
                     }
                 }
             }
         }
     }
     
-    private func executeFunction(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let args = call.arguments as? [String: Any],
-              let conversationId = args["conversationId"] as? String,
-              let functionCall = args["functionCall"] as? [String: Any] else {
-            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId and functionCall are required", details: nil))
-            return
-        }
-        
-        guard let functionName = functionCall["name"] as? String else {
-            result(FlutterError(code: "INVALID_FUNCTION_CALL", message: "Function name is required", details: nil))
-            return
-        }
-        
-        guard conversations[conversationId] != nil else {
-            result(FlutterError(code: "CONVERSATION_NOT_FOUND", message: "Conversation not found: \(conversationId)", details: nil))
-            return
-        }
-        
-        // Check if function is registered
-        guard let functionSchema = conversationFunctions[conversationId]?[functionName] else {
-            result(FlutterError(code: "FUNCTION_NOT_FOUND", message: "Function '\(functionName)' is not registered", details: nil))
-            return
-        }
-        
-        let arguments = functionCall["arguments"] as? [String: Any] ?? [:]
-        
-        print("Flutter LEAP SDK iOS: Executing function '\(functionName)' with \(arguments.count) arguments")
-        
-        // iOS LEAP SDK handles function execution differently - functions are called automatically
-        // during generation when the model requests them. This method is kept for API compatibility.
-        result(["status": "Function execution handled automatically by iOS LEAP SDK"])
-    }
-    
-    // MARK: - Additional Methods to Match Android
-    
-    private func checkModelExists(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let args = call.arguments as? [String: Any],
-              let modelPath = args["modelPath"] as? String else {
-            result(FlutterError(code: "INVALID_ARGUMENTS", message: "Model path is required", details: nil))
-            return
-        }
-        
-        let fileManager = FileManager.default
-        let exists = fileManager.fileExists(atPath: modelPath)
-        result(exists)
-    }
-    
-    private func checkModelLoaded(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let args = call.arguments as? [String: Any],
-              let modelPath = args["modelPath"] as? String else {
-            result(FlutterError(code: "INVALID_ARGUMENTS", message: "Model path is required", details: nil))
-            return
-        }
-        
-        let isLoaded = isModelLoaded && currentModelPath == modelPath
-        result(isLoaded)
-    }
-    
-    private func currentLoadedModel(result: @escaping FlutterResult) {
-        result(currentModelPath)
-    }
-    
-    private func getActiveConversationIds(result: @escaping FlutterResult) {
-        let conversationIds = Array(conversations.keys)
-        result(conversationIds)
-    }
-    
-    private func generateResponseStructuredStream(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let runner = modelRunner, isModelLoaded else {
-            result(FlutterError(code: "MODEL_NOT_LOADED", message: "Model is not loaded", details: nil))
-            return
-        }
-        
-        guard let args = call.arguments as? [String: Any],
-              let message = args["message"] as? String else {
-            result(FlutterError(code: "INVALID_ARGUMENTS", message: "Message is required", details: nil))
-            return
-        }
-        
-        let systemPrompt = args["systemPrompt"] as? String ?? ""
-        let generationOptionsMap = args["generationOptions"] as? [String: Any]
-        
-        // Validate input
-        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedMessage.isEmpty else {
-            result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
-            return
-        }
-        
-        guard message.count <= 4096 else {
-            result(FlutterError(code: "INPUT_TOO_LONG", message: "Message too long (max 4096 characters)", details: nil))
-            return
-        }
-        
-        print("Flutter LEAP SDK iOS: Starting structured streaming response (\(message.count) chars)")
-        
-        // Cancel any existing streaming task
-        activeStreamingTask?.cancel()
-        
-        activeStreamingTask = Task {
-            do {
-                result("Streaming started")
-                
-                let conversation = Conversation(modelRunner: runner, history: systemPrompt.isEmpty ? [] : [ChatMessage(role: .system, content: [.text(systemPrompt)])])
-                let nativeOptions = createNativeGenerationOptions(from: generationOptionsMap)
-                
-                let chatMessage = ChatMessage(role: .user, content: [.text(message)])
-                for try await messageResponse in conversation.generateResponse(message: chatMessage, options: nativeOptions) {
-                    // Check if task was cancelled
-                    if Task.isCancelled { break }
-                    
-                    let structuredResponse = messageResponseToMap(messageResponse)
-                    
-                    DispatchQueue.main.async {
-                        self.eventSink?(structuredResponse)
-                    }
-                    
-                    if case .complete = messageResponse {
-                        DispatchQueue.main.async {
-                            self.eventSink?("<STREAM_END>")
-                        }
-                        print("Flutter LEAP SDK iOS: Structured streaming completed")
-                        break
-                    }
-                }
-                
-            } catch {
-                if error is CancellationError {
-                    print("Flutter LEAP SDK iOS: Structured streaming was cancelled")
-                } else {
-                    print("Flutter LEAP SDK iOS: Error in structured streaming: \(type(of: error))")
-                    print("Flutter LEAP SDK iOS: Structured streaming error details: \(error.localizedDescription)")
-                    DispatchQueue.main.async {
-                        self.eventSink?(FlutterError(code: "STREAMING_ERROR", 
-                                                   message: "Error generating structured streaming response: \(error.localizedDescription)", 
-                                                   details: nil))
-                    }
-                }
-            }
-        }
-    }
-    
-    // Helper function to convert MessageResponse to Map format for structured responses
-    private func messageResponseToMap(_ response: MessageResponse) -> [String: Any] {
-        switch response {
-        case .chunk(let text):
-            return [
-                "type": "chunk",
-                "text": text
-            ]
-        case .reasoningChunk(let text):
-            return [
-                "type": "reasoningChunk", 
-                "reasoning": text
-            ]
-        case .functionCalls(let calls):
-            return [
-                "type": "functionCalls",
-                "functionCalls": calls.map { call in
-                    [
-                        "name": call.name,
-                        "arguments": call.arguments
-                    ]
-                }
-            ]
-        case .complete(let usage, let info):
-            return [
-                "type": "complete",
-                "usage": usage,
-                "finishReason": finishReasonToString(info.finishReason),
-                "stats": info.stats != nil ? [
-                    "promptTokens": info.stats!.promptTokens,
-                    "completionTokens": info.stats!.completionTokens,
-                    "totalTokens": info.stats!.totalTokens,
-                    "tokensPerSecond": info.stats!.tokenPerSecond
-                ] : nil
-            ].compactMapValues { $0 }
-        }
-    }
-    
-    private func finishReasonToString(_ reason: GenerationFinishReason) -> String {
-        switch reason {
-        case .stop:
-            return "stop"
-        case .exceed_context:
-            return "length"
-        }
-    }
 }
 
 // MARK: - FlutterStreamHandler
+
 extension FlutterLeapSdkPlugin: FlutterStreamHandler {
     public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
-        print("Flutter LEAP SDK iOS: Event sink connected")
+        NSLog("🚨 iOS DEBUG: EventChannel onListen called - EventSink assigned")
         self.eventSink = events
+        
+        // Reset cancellation flag - new stream starting
+        shouldCancelStreaming = false
+        
+        // Flush any pending buffered data
+        streamDataLock.lock()
+        if !pendingStreamData.isEmpty {
+            NSLog("📦 iOS DEBUG: Flushing \(pendingStreamData.count) pending data items to EventSink")
+            for data in pendingStreamData {
+                events(data)
+            }
+            pendingStreamData.removeAll()
+        }
+        streamDataLock.unlock()
+        
         return nil
     }
     
     public func onCancel(withArguments arguments: Any?) -> FlutterError? {
-        print("Flutter LEAP SDK iOS: Event sink disconnected")
+        NSLog("🚨 iOS DEBUG: EventChannel onCancel called - EventSink cleared")
         self.eventSink = nil
+        
+        // Clear pending buffer data
+        streamDataLock.lock()
+        if !pendingStreamData.isEmpty {
+            NSLog("🗑️ iOS DEBUG: Clearing \(pendingStreamData.count) pending buffer items in onCancel")
+            pendingStreamData.removeAll()
+        }
+        streamDataLock.unlock()
+        
+        // Cancel any active streaming when EventChannel is cancelled
+        shouldCancelStreaming = true
+        activeStreamingTask?.cancel()
+        activeStreamingTask = nil
         return nil
     }
 }

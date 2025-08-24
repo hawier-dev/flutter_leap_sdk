@@ -101,7 +101,25 @@ class FlutterLeapSdkService {
         fullPath = modelPath;
       } else {
         final appDir = await getApplicationDocumentsDirectory();
-        final fileName = modelPath ?? 'model.bundle';
+        String fileName = modelPath ?? 'model.bundle';
+        
+        // Check if modelPath is a display name, and if so, convert to actual filename
+        if (fileName == 'LFM2-350M') {
+          fileName = 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle';
+        } else if (fileName == 'LFM2-700M') {
+          fileName = 'LFM2-700M-8da4w_output_8da8w-seq_4096.bundle';
+        } else if (fileName == 'LFM2-1.2B') {
+          fileName = 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle';
+        }
+        // Or find by display name in availableModels
+        else {
+          final modelInfo = availableModels.values.firstWhere(
+            (model) => model.displayName == fileName,
+            orElse: () => ModelInfo(fileName: fileName, displayName: fileName, size: '', url: ''),
+          );
+          fileName = modelInfo.fileName;
+        }
+        
         fullPath = '${appDir.path}/leap/$fileName';
       }
 
@@ -406,7 +424,24 @@ class FlutterLeapSdkService {
     Function(DownloadProgress)? onProgress,
   }) async {
     try {
-      final fileName = modelName ?? 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle';
+      String fileName = modelName ?? 'LFM2-350M';
+      
+      // Map display name to actual filename (same logic as in loadModel)
+      if (fileName == 'LFM2-350M') {
+        fileName = 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle';
+      } else if (fileName == 'LFM2-700M') {
+        fileName = 'LFM2-700M-8da4w_output_8da8w-seq_4096.bundle';
+      } else if (fileName == 'LFM2-1.2B') {
+        fileName = 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle';
+      }
+      // Or find by display name in availableModels
+      else {
+        final modelInfo = availableModels.values.firstWhere(
+          (model) => model.displayName == fileName,
+          orElse: () => ModelInfo(fileName: fileName, displayName: fileName, size: '', url: ''),
+        );
+        fileName = modelInfo.fileName;
+      }
       final url = modelUrl ?? availableModels[fileName]?.url ?? 
           'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-350M-8da4w_output_8da8w-seq_4096.bundle?download=true';
 
@@ -808,12 +843,15 @@ class FlutterLeapSdkService {
     GenerationOptions? generationOptions,
   }) async* {
     try {
+      LeapLogger.info('🔥 DART DEBUG: Calling generateConversationResponseStream for: "$message"');
+      
       await _channel.invokeMethod('generateConversationResponseStream', {
         'conversationId': conversationId,
         'message': message,
         'history': history.map((m) => m.toMap()).toList(),
         'generationOptions': generationOptions?.toMap(),
       });
+      LeapLogger.info('🔥 DART DEBUG: Method call completed, starting receiveBroadcastStream...');
 
       await for (final data in _streamChannel.receiveBroadcastStream()) {
         LeapLogger.info('Raw stream data received: $data (type: ${data.runtimeType})');

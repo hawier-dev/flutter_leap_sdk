@@ -31,6 +31,7 @@ class DemoScreen extends StatefulWidget {
 class _DemoScreenState extends State<DemoScreen> {
   String _status = 'Initializing...';
   bool _isDownloading = false;
+  bool _isLoading = false;
   double _downloadProgress = 0.0;
   
   Conversation? _conversation;
@@ -93,6 +94,10 @@ class _DemoScreenState extends State<DemoScreen> {
   }
 
   Future<void> _loadModel() async {
+    setState(() {
+      _isLoading = true;
+    });
+    
     try {
       await FlutterLeapSdkService.loadModel(modelPath: 'LFM2-350M');
       
@@ -126,10 +131,12 @@ class _DemoScreenState extends State<DemoScreen> {
       );
       
       setState(() {
+        _isLoading = false;
         _status = '🚀 Ready to chat! Try: "What\'s the weather in Paris?"';
       });
     } catch (e) {
       setState(() {
+        _isLoading = false;
         _status = '❌ Load failed: $e';
       });
     }
@@ -176,7 +183,13 @@ class _DemoScreenState extends State<DemoScreen> {
           _conversation!.addFunctionResults(results);
           
           setState(() {
-            String functionInfo = '\n\n🔧 Function Results:\n';
+            // Update current assistant response if exists
+            if (_messages.isNotEmpty && _messages.last.role == MessageRole.assistant) {
+              _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse);
+            }
+            
+            // Add function results as separate message
+            String functionInfo = '🔧 Function Results:\n';
             for (final result in results) {
               final success = result['success'] as bool;
               
@@ -187,16 +200,14 @@ class _DemoScreenState extends State<DemoScreen> {
                 functionInfo += '❌ Error: ${result['error']}\n';
               }
             }
-            _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse + functionInfo);
+            _messages.add(ChatMessage.assistant(functionInfo));
           });
         } else if (response is MessageResponseComplete) {
           // Final response after function calls
           if (hasFunctionCalls && response.message.content.isNotEmpty) {
             setState(() {
-              final currentMsg = _messages.isNotEmpty && _messages.last.role == MessageRole.assistant 
-                  ? _messages.last.content 
-                  : assistantResponse;
-              _messages[_messages.length - 1] = ChatMessage.assistant('$currentMsg\n\n💬 ${response.message.content}');
+              // Add final response as separate message
+              _messages.add(ChatMessage.assistant('💬 ${response.message.content}'));
             });
           }
           break;
@@ -241,16 +252,25 @@ class _DemoScreenState extends State<DemoScreen> {
                     ],
                   )
                 else if (_conversation == null) ...[
-                  if (FlutterLeapSdkService.modelLoaded)
-                    ElevatedButton(
-                      onPressed: _loadModel,
-                      child: const Text('Load Model & Start Chat'),
-                    )
-                  else
-                    ElevatedButton(
-                      onPressed: _downloadModel,
-                      child: const Text('Download Model'),
-                    ),
+                  Row(
+                    children: [
+                      ElevatedButton(
+                        onPressed: _downloadModel,
+                        child: const Text('Download Model'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: _isLoading ? null : _loadModel,
+                        child: _isLoading 
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Load Model'),
+                      ),
+                    ],
+                  ),
                 ],
               ],
             ),

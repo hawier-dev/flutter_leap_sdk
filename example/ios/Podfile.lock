@@ -4,14 +4,10 @@ PODS:
     - Flutter
     - Leap-SDK (~> 0.4.0)
   - Leap-SDK (0.4.0)
-  - path_provider_foundation (0.0.1):
-    - Flutter
-    - FlutterMacOS
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
   - flutter_leap_sdk (from `.symlinks/plugins/flutter_leap_sdk/ios`)
-  - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
 
 SPEC REPOS:
   trunk:
@@ -22,14 +18,11 @@ EXTERNAL SOURCES:
     :path: Flutter
   flutter_leap_sdk:
     :path: ".symlinks/plugins/flutter_leap_sdk/ios"
-  path_provider_foundation:
-    :path: ".symlinks/plugins/path_provider_foundation/darwin"
 
 SPEC CHECKSUMS:
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
   flutter_leap_sdk: aa0409027dd4457b3f87cd2da1517da06d947d8c
   Leap-SDK: 1ebc742466d98fdb7d5248a07216cbab66371853
-  path_provider_foundation: 2b6b4c569c0fb62ec74538f866245ac84301af46
 
 PODFILE CHECKSUM: 53a6aebc29ccee84c41f92f409fc20cd4ca011f1
 
