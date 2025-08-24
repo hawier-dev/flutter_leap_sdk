@@ -1,0 +1,37 @@
+name: Generate and Deploy Dart Documentation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.0'
+        channel: 'stable'
+
+    - name: Get dependencies
+      run: flutter pub get
+
+    - name: Generate documentation
+      run: |
+        flutter pub global activate dartdoc
+        dart doc
+
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./doc/api
+        cname: flutter-leap-sdk-docs.pages.dev
