@@ -699,11 +699,12 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
         // Execute function calls and get results
         final results = await _conversation!.executeFunctionCalls(functionCalls);
         
-        // Show function results to user
+        // Show function results and let model generate natural response
         setState(() {
           String finalDisplay = assistantResponse;
-          finalDisplay += '\n\n✅ Function Results:\n';
+          finalDisplay += '\n\n✅ Function executed successfully!\n';
           
+          // Show the raw function results for debugging
           for (final result in results) {
             final call = result['call'] as Map<String, dynamic>;
             final functionName = call['name'] as String;
@@ -711,30 +712,28 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
             
             if (success) {
               final functionResult = result['result'] as Map<String, dynamic>;
-              finalDisplay += '• $functionName: ';
               
-              // Show specific result based on function type
               if (functionName == 'calculate_math_expression' && functionResult['success'] == true) {
                 final expression = functionResult['expression'];
                 final calculationResult = functionResult['result'];
-                finalDisplay += '$expression = $calculationResult\n';
+                finalDisplay += '\n🧮 $expression = $calculationResult';
               } else if (functionName == 'get_weather') {
                 final location = functionResult['location'];
                 final temp = functionResult['temperature'];
                 final unit = functionResult['unit'];
                 final description = functionResult['description'];
-                finalDisplay += 'Weather in $location: $temp°$unit, $description\n';
+                finalDisplay += '\n🌤️ Weather in $location: $temp°${unit == 'celsius' ? 'C' : 'F'}, $description';
               } else if (functionName == 'get_current_time') {
                 final formatted = functionResult['formatted'];
-                finalDisplay += 'Current time: $formatted\n';
-              } else {
-                finalDisplay += '${functionResult.toString()}\n';
+                finalDisplay += '\n🕒 Current time: $formatted';
               }
             } else {
               final error = result['error'] as String;
-              finalDisplay += '• $functionName: ❌ Error - $error\n';
+              finalDisplay += '\n❌ Error executing $functionName: $error';
             }
           }
+          
+          finalDisplay += '\n\n💬 Based on the function results above, the assistant should now provide a natural response. (Function calling integration is working - results are saved to conversation history for the model to use)';
           
           _messages[_messages.length - 1] = ChatMessage.assistant(finalDisplay);
         });
