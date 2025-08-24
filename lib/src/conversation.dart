@@ -245,7 +245,7 @@ class Conversation {
     return lastMessage;
   }
 
-  /// Export conversation to JSON string
+  /// Export conversation to JSON string (Flutter custom format)
   String toJson() {
     final data = {
       'id': id,
@@ -256,6 +256,17 @@ class Conversation {
     };
     
     return json.encode(data);
+  }
+
+  /// Export conversation to JSONArray format (official LEAP SDK compatible)
+  List<Map<String, dynamic>> exportToJSONArray() {
+    return _history.map((message) => {
+      'role': message.role.name,
+      'content': message.content,
+      if (message.reasoningContent != null) 'reasoningContent': message.reasoningContent,
+      if (message.functionCalls != null && message.functionCalls!.isNotEmpty) 
+        'functionCalls': message.functionCalls!.map((fc) => fc.toMap()).toList(),
+    }).toList();
   }
 
   /// Create conversation from JSON string

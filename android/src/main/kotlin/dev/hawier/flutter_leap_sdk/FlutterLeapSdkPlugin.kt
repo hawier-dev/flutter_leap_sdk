@@ -51,17 +51,20 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     when (call.method) {
       "loadModel" -> {
         val modelPath = call.argument<String>("modelPath") ?: ""
-        loadModel(modelPath, result)
+        val options = call.argument<Map<String, Any>>("options")
+        loadModel(modelPath, options, result)
       }
       "generateResponse" -> {
         val message = call.argument<String>("message") ?: ""
         val systemPrompt = call.argument<String>("systemPrompt") ?: ""
-        generateResponse(message, systemPrompt, result)
+        val generationOptions = call.argument<Map<String, Any>>("generationOptions")
+        generateResponse(message, systemPrompt, generationOptions, result)
       }
       "generateResponseStream" -> {
         val message = call.argument<String>("message") ?: ""
         val systemPrompt = call.argument<String>("systemPrompt") ?: ""
-        startStreamingResponse(message, systemPrompt, result)
+        val generationOptions = call.argument<Map<String, Any>>("generationOptions")
+        startStreamingResponse(message, systemPrompt, generationOptions, result)
       }
       "cancelStreaming" -> {
         cancelStreaming(result)
@@ -92,6 +95,12 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         val conversationId = call.argument<String>("conversationId") ?: ""
         disposeConversation(conversationId, result)
       }
+      "generateResponseStructuredStream" -> {
+        val message = call.argument<String>("message") ?: ""
+        val systemPrompt = call.argument<String>("systemPrompt") ?: ""
+        val generationOptions = call.argument<Map<String, Any>>("generationOptions")
+        startStructuredStreamingResponse(message, systemPrompt, generationOptions, result)
+      }
       else -> {
         result.notImplemented()
       }
@@ -101,7 +110,14 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
   // Background thread pool for file I/O operations
   private val fileIOExecutor = Executors.newSingleThreadExecutor()
   
-  private fun loadModel(modelPath: String, result: Result) {
+  // Helper function to convert ModelLoadingOptions (currently unused by native SDK)
+  private fun createNativeModelLoadingOptions(options: Map<String, Any>?): ai.liquid.leap.ModelLoadingOptions? {
+    // Note: Native LEAP SDK may not support all these options yet
+    // This is prepared for future compatibility
+    return null // For now, use default loading
+  }
+
+  private fun loadModel(modelPath: String, options: Map<String, Any>?, result: Result) {
     // Use background thread for file I/O to prevent ANR
     fileIOExecutor.execute {
       mainScope.launch(Dispatchers.IO) {
@@ -204,7 +220,33 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     val errorMessage: String = ""
   )
 
-  private fun generateResponse(message: String, systemPrompt: String, result: Result) {
+  // Helper function to convert Dart GenerationOptions to native GenerationOptions
+  private fun createNativeGenerationOptions(options: Map<String, Any>?): ai.liquid.leap.GenerationOptions? {
+    if (options == null) return null
+    
+    return ai.liquid.leap.GenerationOptions().apply {
+      options["temperature"]?.let { 
+        if (it is Number) temperature = it.toFloat()
+      }
+      options["topP"]?.let { 
+        if (it is Number) topP = it.toFloat() 
+      }
+      options["minP"]?.let { 
+        if (it is Number) minP = it.toFloat() 
+      }
+      options["repetitionPenalty"]?.let { 
+        if (it is Number) repetitionPenalty = it.toFloat() 
+      }
+      options["maxTokens"]?.let { 
+        if (it is Number) maxTokens = it.toInt() 
+      }
+      options["jsonSchema"]?.let { 
+        if (it is String) jsonSchemaConstraint = it
+      }
+    }
+  }
+
+  private fun generateResponse(message: String, systemPrompt: String, generationOptions: Map<String, Any>?, result: Result) {
     val runner = modelRunner
     if (runner == null) {
       result.error("MODEL_NOT_LOADED", "Model is not loaded", null)
@@ -225,11 +267,12 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     mainScope.launch(Dispatchers.IO) {
       try {
         val conversation = runner.createConversation(systemPrompt)
+        val nativeOptions = createNativeGenerationOptions(generationOptions)
         var fullResponse = ""
         
         Log.d("FlutterLeapSDK", "Generating response (${message.length} chars)")
         
-        conversation.generateResponse(message)
+        conversation.generateResponse(message, nativeOptions)
           .onEach { response ->
             when (response) {
               is MessageResponse.Chunk -> {
@@ -268,7 +311,7 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     }
   }
 
-  private fun startStreamingResponse(message: String, systemPrompt: String, result: Result) {
+  private fun startStreamingResponse(message: String, systemPrompt: String, generationOptions: Map<String, Any>?, result: Result) {
     val runner = modelRunner
     if (runner == null) {
       result.error("MODEL_NOT_LOADED", "Model is not loaded", null)
@@ -298,8 +341,9 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         Log.d("FlutterLeapSDK", "Starting stream (${message.length} chars)")
         
         val conversation = runner.createConversation(systemPrompt)
+        val nativeOptions = createNativeGenerationOptions(generationOptions)
         
-        conversation.generateResponse(message)
+        conversation.generateResponse(message, nativeOptions)
           .onEach { response ->
             if (shouldCancelStreaming) return@onEach
             
@@ -393,6 +437,126 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       "unknown"
     }
   }
+  
+  // Helper function to convert MessageResponse to Map for Flutter
+  private fun messageResponseToMap(response: MessageResponse): Map<String, Any?> {
+    return when (response) {
+      is MessageResponse.Chunk -> {
+        mapOf(
+          "type" to "chunk",
+          "text" to response.text
+        )
+      }
+      is MessageResponse.ReasoningChunk -> {
+        val reasoningString = response.toString()
+        val textPattern = Regex("ReasoningChunk\\(.*text=([\\s\\S]*)\\)", RegexOption.DOT_MATCHES_ALL)
+        val match = textPattern.find(reasoningString)
+        val extractedText = match?.groupValues?.get(1) ?: ""
+        mapOf(
+          "type" to "reasoningChunk",
+          "reasoning" to extractedText
+        )
+      }
+      is MessageResponse.Complete -> {
+        mapOf(
+          "type" to "complete",
+          "fullMessage" to mapOf(
+            "role" to "assistant",
+            "content" to response.fullMessage?.content ?: "",
+            "reasoningContent" to null, // TODO: Extract reasoning from fullMessage
+            "functionCalls" to null // TODO: Extract function calls
+          ),
+          "finishReason" to when (response.finishReason) {
+            // Map native finish reasons to our enum
+            else -> "stop"
+          },
+          "stats" -> response.stats?.let { stats ->
+            mapOf(
+              "promptTokens" to stats.promptTokens,
+              "completionTokens" to stats.completionTokens,
+              "timeMs" to stats.timeMs,
+              "tokensPerSecond" to stats.tokensPerSecond
+            )
+          }
+        )
+      }
+      else -> {
+        mapOf(
+          "type" to "unknown",
+          "data" to response.toString()
+        )
+      }
+    }
+  }
+
+  private fun startStructuredStreamingResponse(message: String, systemPrompt: String, generationOptions: Map<String, Any>?, result: Result) {
+    val runner = modelRunner
+    if (runner == null) {
+      result.error("MODEL_NOT_LOADED", "Model is not loaded", null)
+      return
+    }
+    
+    // Validate input
+    if (message.trim().isEmpty()) {
+      result.error("INVALID_INPUT", "Message cannot be empty", null)
+      return
+    }
+    
+    if (message.length > 4096) {
+      result.error("INPUT_TOO_LONG", "Message too long (max 4096 characters)", null)
+      return
+    }
+    
+    activeStreamingJob?.cancel()
+    shouldCancelStreaming = false
+    
+    activeStreamingJob = mainScope.launch(Dispatchers.IO) {
+      try {
+        withContext(Dispatchers.Main) {
+          result.success("Streaming started")
+        }
+        
+        Log.d("FlutterLeapSDK", "Starting structured stream (${message.length} chars)")
+        
+        val conversation = runner.createConversation(systemPrompt)
+        val nativeOptions = createNativeGenerationOptions(generationOptions)
+        
+        conversation.generateResponse(message, nativeOptions)
+          .onEach { response ->
+            if (shouldCancelStreaming) return@onEach
+            
+            val responseMap = messageResponseToMap(response)
+            
+            launch(Dispatchers.Main) {
+              streamingSink?.success(responseMap)
+            }
+            
+            // Send stream end for Complete responses
+            if (response is MessageResponse.Complete) {
+              launch(Dispatchers.Main) {
+                streamingSink?.success("<STREAM_END>")
+              }
+              Log.d("FlutterLeapSDK", "Structured streaming completed")
+            }
+          }
+          .collect { }
+          
+      } catch (e: Exception) {
+        if (e is CancellationException) {
+          Log.d("FlutterLeapSDK", "Structured streaming was cancelled")
+        } else {
+          Log.e("FlutterLeapSDK", "Error in structured streaming: ${e.javaClass.simpleName}")
+          Log.e("FlutterLeapSDK", "Structured streaming error details: ${e.message}")
+          launch(Dispatchers.Main) {
+            streamingSink?.error("STREAMING_ERROR", "Error generating structured streaming response: ${e.message ?: "Unknown error"}", null)
+          }
+        }
+      } finally {
+        activeStreamingJob = null
+        shouldCancelStreaming = false
+      }
+    }
+  }
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     channel.setMethodCallHandler(null)
@@ -471,7 +635,10 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     mainScope.launch {
       try {
         withContext(Dispatchers.IO) {
-          val responses = conversation.generateResponse(message)
+          val storedOptions = conversationGenerationOptions[conversationId]
+          val nativeOptions = createNativeGenerationOptions(storedOptions)
+          
+          val responses = conversation.generateResponse(message, nativeOptions)
           var fullResponse = ""
           
           for (response in responses) {
@@ -514,7 +681,10 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     activeStreamingJob = mainScope.launch {
       try {
         withContext(Dispatchers.IO) {
-          val responses = conversation.generateResponse(message)
+          val storedOptions = conversationGenerationOptions[conversationId]
+          val nativeOptions = createNativeGenerationOptions(storedOptions)
+          
+          val responses = conversation.generateResponse(message, nativeOptions)
           
           for (response in responses) {
             if (shouldCancelStreaming) {

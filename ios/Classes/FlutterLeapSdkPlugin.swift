@@ -60,12 +60,21 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         }
     }
     
+    // Helper function to convert ModelLoadingOptions (currently unused by native SDK)
+    private func createNativeModelLoadingOptions(from options: [String: Any]?) -> Any? {
+        // Note: Native LEAP SDK may not support loading options yet
+        // This is prepared for future compatibility
+        return nil // For now, use default loading
+    }
+    
     private func loadModel(call: FlutterMethodCall, result: @escaping FlutterResult) {
         guard let args = call.arguments as? [String: Any],
               let modelPath = args["modelPath"] as? String else {
             result(FlutterError(code: "INVALID_ARGUMENTS", message: "Model path is required", details: nil))
             return
         }
+        
+        let options = args["options"] as? [String: Any]
         
         // Validate input
         guard !modelPath.isEmpty else {
@@ -209,6 +218,34 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         return "Model loading failed: \(errorDesc)"
     }
     
+    // Helper function to convert Dart GenerationOptions to native GenerationOptions
+    private func createNativeGenerationOptions(from options: [String: Any]?) -> GenerationOptions? {
+        guard let options = options else { return nil }
+        
+        var generationOptions = GenerationOptions()
+        
+        if let temperature = options["temperature"] as? Double {
+            generationOptions.temperature = Float(temperature)
+        }
+        if let topP = options["topP"] as? Double {
+            generationOptions.topP = Float(topP)
+        }
+        if let minP = options["minP"] as? Double {
+            generationOptions.minP = Float(minP)
+        }
+        if let repetitionPenalty = options["repetitionPenalty"] as? Double {
+            generationOptions.repetitionPenalty = Float(repetitionPenalty)
+        }
+        if let maxTokens = options["maxTokens"] as? Int {
+            generationOptions.maxTokens = maxTokens
+        }
+        if let jsonSchema = options["jsonSchema"] as? String {
+            generationOptions.jsonSchemaConstraint = jsonSchema
+        }
+        
+        return generationOptions
+    }
+    
     private func generateResponse(call: FlutterMethodCall, result: @escaping FlutterResult) {
         guard let runner = modelRunner, isModelLoaded else {
             result(FlutterError(code: "MODEL_NOT_LOADED", message: "Model is not loaded", details: nil))
@@ -222,6 +259,7 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         }
         
         let systemPrompt = args["systemPrompt"] as? String ?? ""
+        let generationOptionsMap = args["generationOptions"] as? [String: Any]
         
         // Validate input
         let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -240,10 +278,11 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         Task {
             do {
                 let conversation = runner.createConversation(systemPrompt: systemPrompt)
+                let nativeOptions = createNativeGenerationOptions(from: generationOptionsMap)
                 var fullResponse = ""
                 
                 let chatMessage = ChatMessage(role: .user, content: [.text(message)])
-                for try await messageResponse in conversation.generateResponse(message: chatMessage) {
+                for try await messageResponse in conversation.generateResponse(message: chatMessage, generationOptions: nativeOptions) {
                     switch messageResponse {
                     case .chunk(let text):
                         fullResponse += text
@@ -286,6 +325,7 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         }
         
         let systemPrompt = args["systemPrompt"] as? String ?? ""
+        let generationOptionsMap = args["generationOptions"] as? [String: Any]
         
         // Validate input
         let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -309,9 +349,10 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                 result("Streaming started")
                 
                 let conversation = runner.createConversation(systemPrompt: systemPrompt)
+                let nativeOptions = createNativeGenerationOptions(from: generationOptionsMap)
                 
                 let chatMessage = ChatMessage(role: .user, content: [.text(message)])
-                for try await messageResponse in conversation.generateResponse(message: chatMessage) {
+                for try await messageResponse in conversation.generateResponse(message: chatMessage, generationOptions: nativeOptions) {
                     // Check if task was cancelled
                     if Task.isCancelled { break }
                     
@@ -440,10 +481,12 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         
         Task {
             do {
+                let storedOptions = conversationGenerationOptions[conversationId]
+                let nativeOptions = createNativeGenerationOptions(from: storedOptions)
                 var fullResponse = ""
                 
                 let chatMessage = ChatMessage(role: .user, content: [.text(message)])
-                for try await messageResponse in conversation.generateResponse(message: chatMessage) {
+                for try await messageResponse in conversation.generateResponse(message: chatMessage, generationOptions: nativeOptions) {
                     switch messageResponse {
                     case .chunk(let text):
                         fullResponse += text
@@ -499,8 +542,11 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         
         activeStreamingTask = Task {
             do {
+                let storedOptions = conversationGenerationOptions[conversationId]
+                let nativeOptions = createNativeGenerationOptions(from: storedOptions)
+                
                 let chatMessage = ChatMessage(role: .user, content: [.text(message)])
-                for try await messageResponse in conversation.generateResponse(message: chatMessage) {
+                for try await messageResponse in conversation.generateResponse(message: chatMessage, generationOptions: nativeOptions) {
                     // Check for cancellation
                     try Task.checkCancellation()
                     

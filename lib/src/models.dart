@@ -685,3 +685,132 @@ class LeapFunctionCall {
     return true;
   }
 }
+
+/// Configuration options for model loading.
+/// 
+/// Controls various parameters that affect how models are loaded and initialized,
+/// corresponding to ModelLoadingOptions in the native LEAP SDKs.
+class ModelLoadingOptions {
+  /// Whether to enable verbose logging during model loading
+  final bool? verboseLogging;
+  
+  /// Maximum memory usage in MB (null = no limit)
+  final int? maxMemoryMB;
+  
+  /// Number of threads to use for loading (null = auto)
+  final int? numThreads;
+  
+  /// Whether to use GPU acceleration if available
+  final bool? useGpu;
+  
+  /// GPU device ID to use (null = auto select)
+  final int? gpuDeviceId;
+  
+  /// Additional configuration parameters
+  final Map<String, dynamic>? additionalConfig;
+
+  const ModelLoadingOptions({
+    this.verboseLogging,
+    this.maxMemoryMB,
+    this.numThreads,
+    this.useGpu,
+    this.gpuDeviceId,
+    this.additionalConfig,
+  });
+
+  /// Create with default settings optimized for performance
+  factory ModelLoadingOptions.performance() {
+    return const ModelLoadingOptions(
+      verboseLogging: false,
+      useGpu: true,
+      numThreads: null, // Auto-detect optimal threads
+    );
+  }
+
+  /// Create with default settings optimized for memory efficiency
+  factory ModelLoadingOptions.memoryEfficient() {
+    return const ModelLoadingOptions(
+      verboseLogging: false,
+      useGpu: false,
+      numThreads: 2, // Use fewer threads
+    );
+  }
+
+  /// Create with verbose logging enabled for debugging
+  factory ModelLoadingOptions.debug() {
+    return const ModelLoadingOptions(
+      verboseLogging: true,
+      useGpu: false,
+      numThreads: 1,
+    );
+  }
+
+  /// Convert to map for native method calls
+  Map<String, dynamic> toMap() {
+    final map = <String, dynamic>{};
+    
+    if (verboseLogging != null) map['verboseLogging'] = verboseLogging;
+    if (maxMemoryMB != null) map['maxMemoryMB'] = maxMemoryMB;
+    if (numThreads != null) map['numThreads'] = numThreads;
+    if (useGpu != null) map['useGpu'] = useGpu;
+    if (gpuDeviceId != null) map['gpuDeviceId'] = gpuDeviceId;
+    if (additionalConfig != null) map['additionalConfig'] = additionalConfig;
+    
+    return map;
+  }
+
+  /// Create from map
+  factory ModelLoadingOptions.fromMap(Map<String, dynamic> map) {
+    return ModelLoadingOptions(
+      verboseLogging: map['verboseLogging'],
+      maxMemoryMB: map['maxMemoryMB'],
+      numThreads: map['numThreads'],
+      useGpu: map['useGpu'],
+      gpuDeviceId: map['gpuDeviceId'],
+      additionalConfig: map['additionalConfig'],
+    );
+  }
+
+  @override
+  String toString() {
+    final parts = <String>[];
+    if (verboseLogging != null) parts.add('verboseLogging: $verboseLogging');
+    if (maxMemoryMB != null) parts.add('maxMemoryMB: $maxMemoryMB');
+    if (numThreads != null) parts.add('numThreads: $numThreads');
+    if (useGpu != null) parts.add('useGpu: $useGpu');
+    if (gpuDeviceId != null) parts.add('gpuDeviceId: $gpuDeviceId');
+    if (additionalConfig != null) parts.add('additionalConfig: ${additionalConfig.toString()}');
+    
+    return 'ModelLoadingOptions(${parts.join(', ')})';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ModelLoadingOptions &&
+        other.verboseLogging == verboseLogging &&
+        other.maxMemoryMB == maxMemoryMB &&
+        other.numThreads == numThreads &&
+        other.useGpu == useGpu &&
+        other.gpuDeviceId == gpuDeviceId &&
+        _mapsEqual(other.additionalConfig ?? {}, additionalConfig ?? {});
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        verboseLogging,
+        maxMemoryMB,
+        numThreads,
+        useGpu,
+        gpuDeviceId,
+        additionalConfig,
+      );
+      
+  bool _mapsEqual(Map<String, dynamic> a, Map<String, dynamic> b) {
+    if (a.length != b.length) return false;
+    for (final key in a.keys) {
+      if (!b.containsKey(key) || b[key] != a[key]) return false;
+    }
+    return true;
+  }
+}

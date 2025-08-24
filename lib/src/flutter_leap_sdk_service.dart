@@ -87,11 +87,11 @@ class FlutterLeapSdkService {
   }
 
   /// Load a model from the specified path
-  static Future<String> loadModel({String? modelPath}) async {
-    return await instance._loadModel(modelPath: modelPath);
+  static Future<String> loadModel({String? modelPath, ModelLoadingOptions? options}) async {
+    return await instance._loadModel(modelPath: modelPath, options: options);
   }
   
-  Future<String> _loadModel({String? modelPath}) async {
+  Future<String> _loadModel({String? modelPath, ModelLoadingOptions? options}) async {
     try {
       String fullPath;
       if (modelPath != null && modelPath.startsWith('/')) {
@@ -133,6 +133,7 @@ class FlutterLeapSdkService {
 
       final String result = await _channel.invokeMethod('loadModel', {
         'modelPath': fullPath,
+        'options': options?.toMap(),
       });
       
       _isModelLoaded = true;
@@ -204,11 +205,11 @@ class FlutterLeapSdkService {
   }
 
   /// Generate a response using the loaded model
-  static Future<String> generateResponse(String message, {String? systemPrompt}) async {
-    return await instance._generateResponse(message, systemPrompt: systemPrompt);
+  static Future<String> generateResponse(String message, {String? systemPrompt, GenerationOptions? generationOptions}) async {
+    return await instance._generateResponse(message, systemPrompt: systemPrompt, generationOptions: generationOptions);
   }
   
-  Future<String> _generateResponse(String message, {String? systemPrompt}) async {
+  Future<String> _generateResponse(String message, {String? systemPrompt, GenerationOptions? generationOptions}) async {
     if (!_isModelLoaded) {
       throw const ModelNotLoadedException();
     }
@@ -228,6 +229,7 @@ class FlutterLeapSdkService {
       final String result = await _channel.invokeMethod('generateResponse', {
         'message': message,
         'systemPrompt': systemPrompt ?? '',
+        'generationOptions': generationOptions?.toMap(),
       });
       
       LeapLogger.info('Response generated (${result.length} chars)');
@@ -243,11 +245,11 @@ class FlutterLeapSdkService {
   }
 
   /// Generate a streaming response using the loaded model
-  static Stream<String> generateResponseStream(String message, {String? systemPrompt}) async* {
-    yield* instance._generateResponseStream(message, systemPrompt: systemPrompt);
+  static Stream<String> generateResponseStream(String message, {String? systemPrompt, GenerationOptions? generationOptions}) async* {
+    yield* instance._generateResponseStream(message, systemPrompt: systemPrompt, generationOptions: generationOptions);
   }
   
-  Stream<String> _generateResponseStream(String message, {String? systemPrompt}) async* {
+  Stream<String> _generateResponseStream(String message, {String? systemPrompt, GenerationOptions? generationOptions}) async* {
     if (!_isModelLoaded) {
       throw const ModelNotLoadedException();
     }
@@ -267,6 +269,7 @@ class FlutterLeapSdkService {
       await _channel.invokeMethod('generateResponseStream', {
         'message': message,
         'systemPrompt': systemPrompt ?? '',
+        'generationOptions': generationOptions?.toMap(),
       });
 
       await for (final data in _streamChannel.receiveBroadcastStream()) {
