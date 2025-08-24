@@ -733,11 +733,38 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
             }
           }
           
-          finalDisplay += '\n\n💬 Based on the function results above, the assistant should now provide a natural response. (Function calling integration is working - results are saved to conversation history for the model to use)';
-          
           _messages[_messages.length - 1] = ChatMessage.assistant(finalDisplay);
         });
         _scrollToBottom();
+        
+        // Now continue generation to get AI's natural response based on function results
+        try {
+          // Add a prompt to trigger continuation based on function results
+          final continuePrompt = "Based on the function results above, please provide a helpful response to the user.";
+          
+          String aiResponse = '';
+          await for (final chunk in _conversation!.generateResponseStream(continuePrompt)) {
+            aiResponse += chunk;
+            setState(() {
+              String currentDisplay = _messages.last.content;
+              // Replace or add the AI response section
+              if (currentDisplay.contains('\n\n🤖 AI Response:')) {
+                final baseContent = currentDisplay.split('\n\n🤖 AI Response:')[0];
+                currentDisplay = '$baseContent\n\n🤖 AI Response:\n$aiResponse';
+              } else {
+                currentDisplay += '\n\n🤖 AI Response:\n$aiResponse';
+              }
+              _messages[_messages.length - 1] = ChatMessage.assistant(currentDisplay);
+            });
+            _scrollToBottom();
+          }
+        } catch (e) {
+          setState(() {
+            String currentDisplay = _messages.last.content;
+            currentDisplay += '\n\n❌ Could not generate AI response: $e';
+            _messages[_messages.length - 1] = ChatMessage.assistant(currentDisplay);
+          });
+        }
         
         // Reset for next iteration
         functionCalls.clear();
