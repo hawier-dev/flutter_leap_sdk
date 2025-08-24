@@ -674,6 +674,22 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
           });
           _scrollToBottom();
         } else if (response is MessageResponseComplete) {
+          // Check if generation was stopped unexpectedly
+          if (response.message.content.contains('[Generation stopped unexpectedly]')) {
+            setState(() {
+              // Update the message to show it was interrupted
+              if (_messages.isNotEmpty && _messages.last.role == MessageRole.assistant) {
+                final currentMsg = _messages.last.content;
+                final interruptedMsg = currentMsg.isEmpty ? 
+                  '⚠️ Generation was interrupted' : 
+                  '$currentMsg\n⚠️ Generation was interrupted';
+                _messages[_messages.length - 1] = ChatMessage.assistant(interruptedMsg);
+              }
+            });
+            _scrollToBottom();
+            break;
+          }
+          
           // Handle function calling completion properly
           if (response.finishReason == GenerationFinishReason.functionCall && 
               response.message.functionCalls != null && 
@@ -728,7 +744,15 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
       }
     } catch (e) {
       setState(() {
-        String errorMsg = 'Error: ${e.toString()}';
+        String errorMsg;
+        
+        // Check if this is a generation interruption
+        if (e.toString().contains('Generation stopped unexpectedly') || 
+            e.toString().contains('Stopping generation due to stop request')) {
+          errorMsg = '⚠️ Generation was interrupted unexpectedly';
+        } else {
+          errorMsg = 'Error: ${e.toString()}';
+        }
         
         // Detect common generation issues
         if (e.toString().toLowerCase().contains('generation') && 
