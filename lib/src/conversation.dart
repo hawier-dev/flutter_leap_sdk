@@ -24,6 +24,9 @@ class Conversation {
   
   /// Generation options to use for this conversation
   GenerationOptions? _generationOptions;
+  
+  /// Registered functions available for calling
+  final Map<String, LeapFunction> _functions = {};
 
   /// Create a new conversation with optional system prompt
   Conversation({
@@ -86,6 +89,42 @@ class Conversation {
   void addMessage(ChatMessage message) {
     _history.add(message);
     LeapLogger.info('Added ${message.role.name} message to conversation: $id');
+  }
+
+  /// Register a function for the model to call
+  void registerFunction(LeapFunction function) {
+    _functions[function.name] = function;
+    LeapLogger.info('Registered function "${function.name}" for conversation: $id');
+  }
+
+  /// Unregister a function
+  void unregisterFunction(String functionName) {
+    _functions.remove(functionName);
+    LeapLogger.info('Unregistered function "$functionName" from conversation: $id');
+  }
+
+  /// Get all registered functions
+  List<LeapFunction> get registeredFunctions => _functions.values.toList();
+
+  /// Check if a function is registered
+  bool hasFunction(String functionName) => _functions.containsKey(functionName);
+
+  /// Execute a function call
+  Future<Map<String, dynamic>> executeFunction(LeapFunctionCall functionCall) async {
+    final function = _functions[functionCall.name];
+    if (function == null) {
+      throw GenerationException('Function "${functionCall.name}" is not registered', 'FUNCTION_NOT_FOUND');
+    }
+
+    try {
+      LeapLogger.info('Executing function "${functionCall.name}" with ${functionCall.arguments.length} arguments');
+      final result = await function.implementation(functionCall.arguments);
+      LeapLogger.info('Function "${functionCall.name}" executed successfully');
+      return result;
+    } catch (e) {
+      LeapLogger.error('Function "${functionCall.name}" execution failed', e);
+      rethrow;
+    }
   }
 
   /// Generate a response to a user message
@@ -284,8 +323,104 @@ class Conversation {
     }
   }
 
+  /// Generate a structured response with MessageResponse support
+  /// 
+  /// This method returns structured MessageResponse objects instead of plain strings,
+  /// allowing access to chunks, reasoning, function calls, and completion info.
+  Stream<MessageResponse> generateResponseStructured(String userMessage) async* {
+    if (_isGenerating) {
+      throw GenerationException('Conversation is already generating a response', 'GENERATION_IN_PROGRESS');
+    }
+
+    if (userMessage.trim().isEmpty) {
+      throw GenerationException('Message cannot be empty', 'INVALID_INPUT');
+    }
+
+    _isGenerating = true;
+    
+    try {
+      // Add user message to history
+      final userMsg = ChatMessage.user(userMessage);
+      addMessage(userMsg);
+
+      LeapLogger.info('Generating structured response for conversation: $id (${userMessage.length} chars)');
+
+      String fullResponse = '';
+      String fullReasoning = '';
+      List<LeapFunctionCall> functionCalls = [];
+      
+      // Generate streaming response using the service
+      await for (final chunk in FlutterLeapSdkService.generateConversationResponseStream(
+        conversationId: id,
+        message: userMessage,
+        history: _history,
+        generationOptions: _generationOptions,
+      )) {
+        if (chunk == '<STREAM_END>') {
+          // Create completion response
+          final assistantMsg = ChatMessage.assistant(
+            fullResponse, 
+            reasoningContent: fullReasoning.isEmpty ? null : fullReasoning,
+            functionCalls: functionCalls.isEmpty ? null : functionCalls,
+          );
+          
+          addMessage(assistantMsg);
+          
+          yield MessageResponseComplete(
+            message: assistantMsg,
+            finishReason: functionCalls.isNotEmpty ? GenerationFinishReason.functionCall : GenerationFinishReason.stop,
+            stats: null, // TODO: Add stats from native
+          );
+          break;
+        } else {
+          // For now, treat all chunks as regular text chunks
+          // TODO: Parse and detect reasoning chunks and function calls from native
+          fullResponse += chunk;
+          yield MessageResponseChunk(chunk);
+        }
+      }
+
+      LeapLogger.info('Completed structured response for conversation: $id (${fullResponse.length} chars)');
+      
+    } finally {
+      _isGenerating = false;
+    }
+  }
+
+  /// Execute function calls and continue generation if needed
+  Future<void> executeFunctionCalls(List<LeapFunctionCall> functionCalls) async {
+    final results = <Map<String, dynamic>>[];
+    
+    for (final functionCall in functionCalls) {
+      try {
+        final result = await executeFunction(functionCall);
+        results.add({
+          'call': functionCall.toMap(),
+          'result': result,
+          'success': true,
+        });
+      } catch (e) {
+        results.add({
+          'call': functionCall.toMap(),
+          'error': e.toString(),
+          'success': false,
+        });
+      }
+    }
+    
+    // Add function results as a system message for context
+    final resultsMessage = ChatMessage.system(
+      'Function call results: ${json.encode(results)}'
+    );
+    addMessage(resultsMessage);
+    
+    LeapLogger.info('Executed ${functionCalls.length} function calls for conversation: $id');
+  }
+
   @override
   String toString() {
-    return 'Conversation(id: $id, messages: $messageCount, generating: $_isGenerating)';
+    final parts = ['id: $id', 'messages: $messageCount', 'generating: $_isGenerating'];
+    if (_functions.isNotEmpty) parts.add('functions: ${_functions.length}');
+    return 'Conversation(${parts.join(', ')})';
   }
 }
