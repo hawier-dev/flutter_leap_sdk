@@ -296,6 +296,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and release notes.
 
----
-
-**Built with**: [Liquid AI LEAP SDK](https://leap.liquid.ai)
