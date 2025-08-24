@@ -49,7 +49,13 @@ class _DemoScreenState extends State<DemoScreen> {
     try {
       final isLoaded = FlutterLeapSdkService.modelLoaded;
       setState(() {
-        _status = isLoaded ? '✅ Model ready' : '⬇️ Need to download model';
+        if (isLoaded && _conversation != null) {
+          _status = '🚀 Ready to chat! Try: "What\'s the weather in Paris?"';
+        } else if (isLoaded) {
+          _status = '✅ Model ready - click Load to start chat';
+        } else {
+          _status = '⬇️ Need to download model';
+        }
       });
     } catch (e) {
       setState(() {
@@ -90,9 +96,8 @@ class _DemoScreenState extends State<DemoScreen> {
     try {
       await FlutterLeapSdkService.loadModel(modelPath: 'LFM2-350M');
       
-      // Create conversation
-      _conversation = Conversation(
-        id: 'demo-chat',
+      // Create conversation through service (creates both Dart and native conversation)
+      _conversation = await FlutterLeapSdkService.createConversation(
         systemPrompt: 'You are a helpful AI assistant.',
       );
       
@@ -186,11 +191,18 @@ class _DemoScreenState extends State<DemoScreen> {
                       Text('Downloading: ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
                     ],
                   )
-                else if (_conversation == null)
-                  ElevatedButton(
-                    onPressed: _downloadModel,
-                    child: const Text('Download Model'),
-                  ),
+                else if (_conversation == null) ...[
+                  if (FlutterLeapSdkService.modelLoaded)
+                    ElevatedButton(
+                      onPressed: _loadModel,
+                      child: const Text('Load Model & Start Chat'),
+                    )
+                  else
+                    ElevatedButton(
+                      onPressed: _downloadModel,
+                      child: const Text('Download Model'),
+                    ),
+                ],
               ],
             ),
           ),
