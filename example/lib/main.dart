@@ -565,7 +565,7 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
       
       // Calculator function
       LeapFunction(
-        name: 'calculate',
+        name: 'calculate_math_expression',
         description: 'Perform basic mathematical calculations',
         parameters: [
           LeapFunctionParameter(
@@ -694,38 +694,62 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
     }
     
     // Handle function call continuation after first generation completes
-    if (needsContinuation && functionCalls.isNotEmpty) {
+    while (needsContinuation && functionCalls.isNotEmpty) {
       try {
-        // Execute function calls
-        await _conversation!.executeFunctionCalls(functionCalls);
+        // Execute function calls and get results
+        final results = await _conversation!.executeFunctionCalls(functionCalls);
         
-        // Show function results
+        // Show function results to user
         setState(() {
-          String functionResultsDisplay = assistantResponse;
-          functionResultsDisplay += '\n\n✅ Function results received. Generating final response...\n';
-          _messages[_messages.length - 1] = ChatMessage.assistant(functionResultsDisplay);
+          String finalDisplay = assistantResponse;
+          finalDisplay += '\n\n✅ Function Results:\n';
+          
+          for (final result in results) {
+            final call = result['call'] as Map<String, dynamic>;
+            final functionName = call['name'] as String;
+            final success = result['success'] as bool;
+            
+            if (success) {
+              final functionResult = result['result'] as Map<String, dynamic>;
+              finalDisplay += '• $functionName: ';
+              
+              // Show specific result based on function type
+              if (functionName == 'calculate_math_expression' && functionResult['success'] == true) {
+                final expression = functionResult['expression'];
+                final calculationResult = functionResult['result'];
+                finalDisplay += '$expression = $calculationResult\n';
+              } else if (functionName == 'get_weather') {
+                final location = functionResult['location'];
+                final temp = functionResult['temperature'];
+                final unit = functionResult['unit'];
+                final description = functionResult['description'];
+                finalDisplay += 'Weather in $location: $temp°$unit, $description\n';
+              } else if (functionName == 'get_current_time') {
+                final formatted = functionResult['formatted'];
+                finalDisplay += 'Current time: $formatted\n';
+              } else {
+                finalDisplay += '${functionResult.toString()}\n';
+              }
+            } else {
+              final error = result['error'] as String;
+              finalDisplay += '• $functionName: ❌ Error - $error\n';
+            }
+          }
+          
+          _messages[_messages.length - 1] = ChatMessage.assistant(finalDisplay);
         });
         _scrollToBottom();
         
-        // Continue generation with function results
-        String finalResponse = '';
-        await for (final continuationResponse in _conversation!.generateResponseStructured('Please provide the final response based on the function results.')) {
-          if (continuationResponse is MessageResponseChunk) {
-            finalResponse += continuationResponse.text;
-            setState(() {
-              _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse + '\n\n' + finalResponse);
-            });
-            _scrollToBottom();
-          } else if (continuationResponse is MessageResponseComplete) {
-            break;
-          }
-        }
+        // Reset for next iteration
+        functionCalls.clear();
+        needsContinuation = false;
       } catch (e) {
         setState(() {
           String errorDisplay = assistantResponse;
           errorDisplay += '\n\n❌ Error executing functions: ${e.toString()}';
           _messages[_messages.length - 1] = ChatMessage.assistant(errorDisplay);
         });
+        break;
       }
     }
     
