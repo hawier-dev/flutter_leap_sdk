@@ -599,11 +599,21 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         val conversation = runner.createConversation(systemPrompt)
         val nativeOptions = createNativeGenerationOptions(generationOptions)
         
+        var lastResponseTime = System.currentTimeMillis()
+        var responseCount = 0
+        
         conversation.generateResponse(message, nativeOptions)
           .onEach { response ->
-            if (shouldCancelStreaming) return@onEach
+            if (shouldCancelStreaming) {
+              Log.d("FlutterLeapSDK", "Generation cancelled by flag")
+              return@onEach
+            }
             
+            lastResponseTime = System.currentTimeMillis()
+            responseCount++
+            Log.d("FlutterLeapSDK", "Raw response type: ${response::class.simpleName} (count: $responseCount)")
             val responseMap = messageResponseToMap(response)
+            Log.d("FlutterLeapSDK", "Sending structured response: $responseMap")
             
             launch(Dispatchers.Main) {
               streamingSink?.success(responseMap)
@@ -614,10 +624,29 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
               launch(Dispatchers.Main) {
                 streamingSink?.success("<STREAM_END>")
               }
-              Log.d("FlutterLeapSDK", "Structured streaming completed")
+              Log.d("FlutterLeapSDK", "Structured streaming completed with $responseCount responses")
+            }
+          }
+          .catch { error ->
+            Log.e("FlutterLeapSDK", "Generation stream error: ${error.message}")
+            launch(Dispatchers.Main) {
+              streamingSink?.error("GENERATION_ERROR", "Generation stopped unexpectedly: ${error.message}", null)
             }
           }
           .collect { }
+          
+        // Timeout detection - check if generation stalled without proper completion
+        launch {
+          delay(30000) // Wait 30 seconds
+          val timeSinceLastResponse = System.currentTimeMillis() - lastResponseTime
+          if (timeSinceLastResponse > 30000 && !shouldCancelStreaming && responseCount > 0) {
+            Log.w("FlutterLeapSDK", "Generation appears to have stalled after $responseCount responses")
+            launch(Dispatchers.Main) {
+              streamingSink?.error("GENERATION_TIMEOUT", "Generation stopped unexpectedly", null)
+            }
+            shouldCancelStreaming = true
+          }
+        }
           
       } catch (e: Exception) {
         if (e is CancellationException) {
@@ -764,9 +793,12 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     Log.d("FlutterLeapSDK", "Starting conversation streaming response (${message.length} chars)")
     result.success("Streaming started")
     
-    // Cancel any existing streaming
-    activeStreamingJob?.cancel()
-    shouldCancelStreaming = false
+    // Only cancel if not in the same conversation - allow continuation
+    if (activeStreamingJob != null) {
+      Log.d("FlutterLeapSDK", "Previous streaming still active - allowing continuation")
+    } else {
+      shouldCancelStreaming = false
+    }
     
     activeStreamingJob = mainScope.launch(Dispatchers.IO) {
       try {
@@ -780,24 +812,36 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
             when (response) {
               is MessageResponse.Chunk -> {
                 if (response.text.isNotEmpty()) {
+                  val responseMap = messageResponseToMap(response)
                   launch(Dispatchers.Main) {
-                    streamingSink?.success(response.text)
+                    streamingSink?.success(responseMap)
                   }
                 }
               }
               is MessageResponse.ReasoningChunk -> {
                 if (response.reasoning.isNotEmpty()) {
+                  val responseMap = messageResponseToMap(response)
                   launch(Dispatchers.Main) {
-                    streamingSink?.success(response.reasoning)
+                    streamingSink?.success(responseMap)
                   }
                 }
               }
-              is MessageResponse.Complete -> {
+              is MessageResponse.FunctionCalls -> {
+                Log.d("FlutterLeapSDK", "Processing function calls: ${response.functionCalls.size}")
+                val responseMap = messageResponseToMap(response)
+                Log.d("FlutterLeapSDK", "Sending function calls: $responseMap")
                 launch(Dispatchers.Main) {
-                  if (!shouldCancelStreaming) {
-                    streamingSink?.success("<STREAM_END>")
-                    Log.d("FlutterLeapSDK", "Conversation streaming completed")
-                  }
+                  streamingSink?.success(responseMap)
+                }
+              }
+              is MessageResponse.Complete -> {
+                Log.d("FlutterLeapSDK", "Processing complete response")
+                val responseMap = messageResponseToMap(response)
+                Log.d("FlutterLeapSDK", "Sending complete response: $responseMap")
+                launch(Dispatchers.Main) {
+                  streamingSink?.success(responseMap)
+                  streamingSink?.success("<STREAM_END>")
+                  Log.d("FlutterLeapSDK", "Conversation streaming completed")
                 }
               }
               else -> {

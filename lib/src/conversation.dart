@@ -197,12 +197,12 @@ class Conversation {
   /// Adds the user message to history and generates a streaming assistant response.
   /// Yields response chunks as they are generated.
   Stream<String> generateResponseStream(String userMessage) async* {
-    if (_isGenerating) {
-      throw GenerationException('Conversation is already generating a response', 'GENERATION_IN_PROGRESS');
-    }
-
     if (userMessage.trim().isEmpty) {
       throw GenerationException('Message cannot be empty', 'INVALID_INPUT');
+    }
+
+    if (_isGenerating) {
+      throw GenerationException('Conversation is already generating a response', 'GENERATION_IN_PROGRESS');
     }
 
     _isGenerating = true;
@@ -215,6 +215,7 @@ class Conversation {
       LeapLogger.info('Starting streaming response for conversation: $id (${userMessage.length} chars)');
 
       String fullResponse = '';
+      bool hasReceivedAnyResponse = false;
       
       // Generate streaming response using the service
       await for (final chunk in FlutterLeapSdkService.generateConversationResponseStream(
@@ -223,13 +224,19 @@ class Conversation {
         history: _history,
         generationOptions: _generationOptions,
       )) {
+        hasReceivedAnyResponse = true;
         fullResponse += chunk;
         yield chunk;
       }
 
-      // Add complete assistant response to history
+      // Add complete assistant response to history or handle unexpected termination
       if (fullResponse.isNotEmpty) {
         final assistantMsg = ChatMessage.assistant(fullResponse);
+        addMessage(assistantMsg);
+      } else if (!hasReceivedAnyResponse) {
+        // Stream ended without any response - likely stopped unexpectedly
+        LeapLogger.warning('Streaming ended without any response for conversation: $id');
+        final assistantMsg = ChatMessage.assistant('[Generation stopped unexpectedly]');
         addMessage(assistantMsg);
       }
 
@@ -393,9 +400,14 @@ class Conversation {
   /// Cancel any ongoing generation
   Future<void> cancelGeneration() async {
     if (_isGenerating) {
-      await FlutterLeapSdkService.cancelStreaming();
-      _isGenerating = false;
-      LeapLogger.info('Cancelled generation for conversation: $id');
+      try {
+        await FlutterLeapSdkService.cancelStreaming();
+        LeapLogger.info('Cancelled generation for conversation: $id');
+      } catch (e) {
+        LeapLogger.error('Error cancelling generation', e);
+      } finally {
+        _isGenerating = false;  // Always reset flag
+      }
     }
   }
 
@@ -404,12 +416,12 @@ class Conversation {
   /// This method returns structured MessageResponse objects instead of plain strings,
   /// allowing access to chunks, reasoning, function calls, and completion info.
   Stream<MessageResponse> generateResponseStructured(String userMessage) async* {
-    if (_isGenerating) {
-      throw GenerationException('Conversation is already generating a response', 'GENERATION_IN_PROGRESS');
-    }
-
     if (userMessage.trim().isEmpty) {
       throw GenerationException('Message cannot be empty', 'INVALID_INPUT');
+    }
+
+    if (_isGenerating) {
+      throw GenerationException('Conversation is already generating a response', 'GENERATION_IN_PROGRESS');
     }
 
     _isGenerating = true;
@@ -426,12 +438,15 @@ class Conversation {
       List<LeapFunctionCall> functionCalls = [];
       
       // Generate streaming response using the service
+      bool hasReceivedAnyResponse = false;
       await for (final response in FlutterLeapSdkService.generateConversationResponseStructured(
         conversationId: id,
         message: userMessage,
         history: _history,
         generationOptions: _generationOptions,
       )) {
+        hasReceivedAnyResponse = true;
+        
         if (response is MessageResponseChunk) {
           fullResponse += response.text;
           yield response;
@@ -459,43 +474,51 @@ class Conversation {
           break;
         }
       }
+      
+      // If stream ended without completion response and we have some content, create completion
+      if (!hasReceivedAnyResponse || (fullResponse.isNotEmpty && !_history.any((m) => m.content == fullResponse))) {
+        LeapLogger.warning('Generation ended unexpectedly for conversation: $id - creating completion response');
+        
+        if (fullResponse.isNotEmpty || functionCalls.isNotEmpty) {
+          final assistantMsg = ChatMessage.assistant(
+            fullResponse.isEmpty ? '[Generation stopped unexpectedly]' : fullResponse,
+            reasoningContent: fullReasoning.isEmpty ? null : fullReasoning,
+            functionCalls: functionCalls.isEmpty ? null : functionCalls,
+          );
+          
+          addMessage(assistantMsg);
+          
+          yield MessageResponseComplete(
+            message: assistantMsg,
+            finishReason: GenerationFinishReason.stop,
+            stats: null,
+          );
+        }
+      }
 
       LeapLogger.info('Completed structured response for conversation: $id (${fullResponse.length} chars)');
       
+    } catch (e) {
+      LeapLogger.error('Error in structured generation for conversation: $id', e);
+      rethrow;
     } finally {
       _isGenerating = false;
     }
   }
 
-  /// Execute function calls and continue generation if needed
-  Future<void> executeFunctionCalls(List<LeapFunctionCall> functionCalls) async {
-    final results = <Map<String, dynamic>>[];
-    
-    for (final functionCall in functionCalls) {
-      try {
-        final result = await executeFunction(functionCall);
-        results.add({
-          'call': functionCall.toMap(),
-          'result': result,
-          'success': true,
-        });
-      } catch (e) {
-        results.add({
-          'call': functionCall.toMap(),
-          'error': e.toString(),
-          'success': false,
-        });
-      }
-    }
-    
-    // Add function results as a system message for context
+  /// Add function call results to conversation history
+  /// 
+  /// This method should be called by the application after executing function calls.
+  /// The results will be added as a system message to provide context for further generation.
+  void addFunctionResults(List<Map<String, dynamic>> results) {
     final resultsMessage = ChatMessage.system(
       'Function call results: ${json.encode(results)}'
     );
     addMessage(resultsMessage);
     
-    LeapLogger.info('Executed ${functionCalls.length} function calls for conversation: $id');
+    LeapLogger.info('Added function results to conversation: $id (${results.length} results)');
   }
+
 
   @override
   String toString() {

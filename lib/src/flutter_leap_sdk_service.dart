@@ -276,6 +276,7 @@ class FlutterLeapSdkService {
       });
 
       await for (final data in _streamChannel.receiveBroadcastStream()) {
+        LeapLogger.info('Raw stream data received: $data (type: ${data.runtimeType})');
         if (data is String) {
           if (data == '<STREAM_END>') {
             LeapLogger.info('Streaming response completed');
@@ -762,18 +763,20 @@ class FlutterLeapSdkService {
       });
 
       await for (final data in _streamChannel.receiveBroadcastStream()) {
+        LeapLogger.info('Raw stream data received: $data (type: ${data.runtimeType})');
         if (data is String) {
           if (data == '<STREAM_END>') {
             break;
           } else {
             yield data;
           }
-        } else if (data is Map<String, dynamic>) {
-          // Handle structured responses from native
-          final type = data['type'] as String?;
+        } else if (data is Map) {
+          // Handle structured responses from native - cast to Map<String, dynamic>
+          final dataMap = Map<String, dynamic>.from(data);
+          final type = dataMap['type'] as String?;
           switch (type) {
             case 'chunk':
-              yield data['text'] as String? ?? '';
+              yield dataMap['text'] as String? ?? '';
               break;
             case 'reasoningChunk':
               // For now, skip reasoning chunks in simple streaming
@@ -813,6 +816,22 @@ class FlutterLeapSdkService {
       });
 
       await for (final data in _streamChannel.receiveBroadcastStream()) {
+        LeapLogger.info('Raw stream data received: $data (type: ${data.runtimeType})');
+        
+        // Handle error data specially
+        if (data is Map && data.containsKey('error')) {
+          final errorMap = Map<String, dynamic>.from(data);
+          final errorCode = errorMap['code'] as String? ?? 'UNKNOWN_ERROR';
+          final errorMessage = errorMap['message'] as String? ?? 'Unknown error occurred';
+          
+          if (errorCode == 'GENERATION_TIMEOUT' || errorMessage.contains('stopped unexpectedly')) {
+            LeapLogger.warning('Generation stopped unexpectedly: $errorMessage');
+            throw GenerationException('Generation stopped unexpectedly', errorCode);
+          } else {
+            throw GenerationException(errorMessage, errorCode);
+          }
+        }
+        
         if (data is String) {
           if (data == '<STREAM_END>') {
             yield MessageResponseComplete(
@@ -825,27 +844,30 @@ class FlutterLeapSdkService {
             // Plain text chunk
             yield MessageResponseChunk(data);
           }
-        } else if (data is Map<String, dynamic>) {
-          // Handle structured responses from native
-          final type = data['type'] as String?;
+        } else if (data is Map) {
+          // Handle structured responses from native - cast to Map<String, dynamic>
+          final dataMap = Map<String, dynamic>.from(data);
+          LeapLogger.info('Received structured response: $dataMap');
+          final type = dataMap['type'] as String?;
           switch (type) {
             case 'chunk':
-              final text = data['text'] as String? ?? '';
+              final text = dataMap['text'] as String? ?? '';
               yield MessageResponseChunk(text);
               break;
             case 'reasoningChunk':
-              final reasoning = data['reasoning'] as String? ?? '';
+              final reasoning = dataMap['reasoning'] as String? ?? '';
               yield MessageResponseReasoningChunk(reasoning);
               break;
             case 'functionCalls':
-              final functionCallsData = data['functionCalls'] as List<dynamic>? ?? [];
+              final functionCallsData = dataMap['functionCalls'] as List<dynamic>? ?? [];
               final functionCalls = functionCallsData.map((callData) => 
-                LeapFunctionCall.fromMap(callData as Map<String, dynamic>)
+                LeapFunctionCall.fromMap(Map<String, dynamic>.from(callData as Map))
               ).toList();
+              LeapLogger.info('Parsed ${functionCalls.length} function calls: ${functionCalls.map((c) => c.name)}');
               yield MessageResponseFunctionCalls(functionCalls);
               break;
             case 'complete':
-              final finishReasonStr = data['finishReason'] as String? ?? 'stop';
+              final finishReasonStr = dataMap['finishReason'] as String? ?? 'stop';
               final finishReason = GenerationFinishReason.values.firstWhere(
                 (e) => e.name == finishReasonStr,
                 orElse: () => GenerationFinishReason.stop,
@@ -866,6 +888,13 @@ class FlutterLeapSdkService {
       
     } on PlatformException catch (e) {
       LeapLogger.error('Failed to generate structured conversation streaming response', e);
+      
+      // Handle specific timeout and generation errors
+      if (e.code == 'GENERATION_TIMEOUT' || e.code == 'GENERATION_ERROR' || 
+          (e.message != null && e.message!.contains('stopped unexpectedly'))) {
+        throw GenerationException('Generation stopped unexpectedly', e.code);
+      }
+      
       throw GenerationException('Failed to generate structured streaming response: ${e.message}', e.code);
     }
   }
