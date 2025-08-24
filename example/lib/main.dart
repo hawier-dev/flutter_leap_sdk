@@ -29,7 +29,6 @@ class DemoScreen extends StatefulWidget {
 }
 
 class _DemoScreenState extends State<DemoScreen> {
-  bool _isModelLoaded = false;
   String _status = 'Initializing...';
   bool _isDownloading = false;
   double _downloadProgress = 0.0;
@@ -50,7 +49,6 @@ class _DemoScreenState extends State<DemoScreen> {
     try {
       final isLoaded = FlutterLeapSdkService.modelLoaded;
       setState(() {
-        _isModelLoaded = isLoaded;
         _status = isLoaded ? '✅ Model ready' : '⬇️ Need to download model';
       });
     } catch (e) {
@@ -74,7 +72,8 @@ class _DemoScreenState extends State<DemoScreen> {
             _downloadProgress = progress.percentage / 100.0;
             if (progress.isComplete) {
               _isDownloading = false;
-              _checkStatus();
+              _status = '✅ Downloaded! Loading model...';
+              _loadModel();
             }
           });
         },
@@ -121,7 +120,9 @@ class _DemoScreenState extends State<DemoScreen> {
         ),
       );
       
-      _checkStatus();
+      setState(() {
+        _status = '🚀 Ready to chat! Try: "What\'s the weather in Paris?"';
+      });
     } catch (e) {
       setState(() {
         _status = '❌ Load failed: $e';
@@ -185,15 +186,10 @@ class _DemoScreenState extends State<DemoScreen> {
                       Text('Downloading: ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
                     ],
                   )
-                else if (!_isModelLoaded)
+                else if (_conversation == null)
                   ElevatedButton(
                     onPressed: _downloadModel,
                     child: const Text('Download Model'),
-                  )
-                else if (_conversation == null)
-                  ElevatedButton(
-                    onPressed: _loadModel,
-                    child: const Text('Load Model & Start Chat'),
                   ),
               ],
             ),
