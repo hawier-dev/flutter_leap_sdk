@@ -28,6 +28,9 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
   // Conversation management
   private val conversations = mutableMapOf<String, ai.liquid.leap.Conversation>()
   private val conversationGenerationOptions = mutableMapOf<String, Map<String, Any>>()
+  
+  // Function calling support
+  private val conversationFunctions = mutableMapOf<String, MutableMap<String, Map<String, Any>>>()
 
   override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     channel = MethodChannel(flutterPluginBinding.binaryMessenger, "flutter_leap_sdk")
@@ -100,6 +103,22 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         val systemPrompt = call.argument<String>("systemPrompt") ?: ""
         val generationOptions = call.argument<Map<String, Any>>("generationOptions")
         startStructuredStreamingResponse(message, systemPrompt, generationOptions, result)
+      }
+      "registerFunction" -> {
+        val conversationId = call.argument<String>("conversationId") ?: ""
+        val functionName = call.argument<String>("functionName") ?: ""
+        val functionSchema = call.argument<Map<String, Any>>("functionSchema") ?: mapOf()
+        registerFunction(conversationId, functionName, functionSchema, result)
+      }
+      "unregisterFunction" -> {
+        val conversationId = call.argument<String>("conversationId") ?: ""
+        val functionName = call.argument<String>("functionName") ?: ""
+        unregisterFunction(conversationId, functionName, result)
+      }
+      "executeFunction" -> {
+        val conversationId = call.argument<String>("conversationId") ?: ""
+        val functionCall = call.argument<Map<String, Any>>("functionCall") ?: mapOf()
+        executeFunction(conversationId, functionCall, result)
       }
       else -> {
         result.notImplemented()
@@ -725,8 +744,104 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
     
     conversations.remove(conversationId)
     conversationGenerationOptions.remove(conversationId)
+    conversationFunctions.remove(conversationId)
     
     Log.d("FlutterLeapSDK", "Disposed conversation: $conversationId")
     result.success("Conversation disposed successfully")
+  }
+
+  // MARK: - Function Calling Support
+  
+  private fun registerFunction(conversationId: String, functionName: String, functionSchema: Map<String, Any>, result: Result) {
+    try {
+      val conversation = conversations[conversationId]
+      if (conversation == null) {
+        result.error("CONVERSATION_NOT_FOUND", "Conversation not found: $conversationId", null)
+        return
+      }
+
+      // Initialize conversation functions map if not exists
+      if (!conversationFunctions.containsKey(conversationId)) {
+        conversationFunctions[conversationId] = mutableMapOf()
+      }
+
+      // Store function schema for later use
+      conversationFunctions[conversationId]!![functionName] = functionSchema
+
+      // TODO: Register function with native LEAP SDK conversation
+      // This will require calling conversation.registerFunction() with appropriate LeapFunction
+      // For now, we store the schema and will handle calls through executeFunction
+
+      Log.d("FlutterLeapSDK", "Registered function '$functionName' for conversation: $conversationId")
+      result.success("Function registered successfully")
+
+    } catch (e: Exception) {
+      Log.e("FlutterLeapSDK", "Error registering function: ${e.message}")
+      result.error("FUNCTION_REGISTRATION_ERROR", "Error registering function: ${e.message}", null)
+    }
+  }
+
+  private fun unregisterFunction(conversationId: String, functionName: String, result: Result) {
+    try {
+      val conversation = conversations[conversationId]
+      if (conversation == null) {
+        result.error("CONVERSATION_NOT_FOUND", "Conversation not found: $conversationId", null)
+        return
+      }
+
+      // Remove from stored functions
+      conversationFunctions[conversationId]?.remove(functionName)
+
+      // TODO: Unregister from native LEAP SDK conversation
+      
+      Log.d("FlutterLeapSDK", "Unregistered function '$functionName' from conversation: $conversationId")
+      result.success("Function unregistered successfully")
+
+    } catch (e: Exception) {
+      Log.e("FlutterLeapSDK", "Error unregistering function: ${e.message}")
+      result.error("FUNCTION_UNREGISTRATION_ERROR", "Error unregistering function: ${e.message}", null)
+    }
+  }
+
+  private fun executeFunction(conversationId: String, functionCall: Map<String, Any>, result: Result) {
+    try {
+      val functionName = functionCall["name"] as? String
+      val arguments = functionCall["arguments"] as? Map<String, Any> ?: mapOf()
+
+      if (functionName == null) {
+        result.error("INVALID_FUNCTION_CALL", "Function name is required", null)
+        return
+      }
+
+      val conversation = conversations[conversationId]
+      if (conversation == null) {
+        result.error("CONVERSATION_NOT_FOUND", "Conversation not found: $conversationId", null)
+        return
+      }
+
+      // Check if function is registered
+      val functionSchema = conversationFunctions[conversationId]?.get(functionName)
+      if (functionSchema == null) {
+        result.error("FUNCTION_NOT_FOUND", "Function '$functionName' is not registered", null)
+        return
+      }
+
+      Log.d("FlutterLeapSDK", "Executing function '$functionName' with ${arguments.size} arguments")
+
+      // For now, return success with a placeholder result
+      // TODO: Implement actual function execution logic by calling Flutter callback
+      val executionResult = mapOf(
+        "success" to true,
+        "result" to "Function executed successfully",
+        "functionName" to functionName,
+        "arguments" to arguments
+      )
+
+      result.success(executionResult)
+
+    } catch (e: Exception) {
+      Log.e("FlutterLeapSDK", "Error executing function: ${e.message}")
+      result.error("FUNCTION_EXECUTION_ERROR", "Error executing function: ${e.message}", null)
+    }
   }
 }

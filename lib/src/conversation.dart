@@ -92,15 +92,37 @@ class Conversation {
   }
 
   /// Register a function for the model to call
-  void registerFunction(LeapFunction function) {
+  Future<void> registerFunction(LeapFunction function) async {
     _functions[function.name] = function;
-    LeapLogger.info('Registered function "${function.name}" for conversation: $id');
+    
+    // Register with native SDK
+    try {
+      await FlutterLeapSdkService.registerFunction(
+        conversationId: id,
+        functionName: function.name,
+        functionSchema: function.getSchema(),
+      );
+      LeapLogger.info('Registered function "${function.name}" for conversation: $id');
+    } catch (e) {
+      _functions.remove(function.name);
+      LeapLogger.error('Failed to register function "${function.name}"', e);
+      rethrow;
+    }
   }
 
   /// Unregister a function
-  void unregisterFunction(String functionName) {
-    _functions.remove(functionName);
-    LeapLogger.info('Unregistered function "$functionName" from conversation: $id');
+  Future<void> unregisterFunction(String functionName) async {
+    try {
+      await FlutterLeapSdkService.unregisterFunction(
+        conversationId: id,
+        functionName: functionName,
+      );
+      _functions.remove(functionName);
+      LeapLogger.info('Unregistered function "$functionName" from conversation: $id');
+    } catch (e) {
+      LeapLogger.error('Failed to unregister function "$functionName"', e);
+      rethrow;
+    }
   }
 
   /// Get all registered functions
@@ -291,6 +313,49 @@ class Conversation {
       }
     }
     
+    return conversation;
+  }
+
+  /// Create conversation from history array (official LEAP SDK compatible)
+  static Conversation createConversationFromHistory({
+    required String id,
+    required List<Map<String, dynamic>> history,
+    String? systemPrompt,
+    GenerationOptions? generationOptions,
+  }) {
+    final conversation = Conversation(
+      id: id,
+      systemPrompt: systemPrompt,
+      generationOptions: generationOptions,
+    );
+    
+    // Clear auto-added system message
+    conversation._history.clear();
+    
+    // Convert and add messages
+    for (final messageData in history) {
+      final role = MessageRole.values.firstWhere(
+        (r) => r.name == messageData['role'],
+        orElse: () => MessageRole.user,
+      );
+      
+      final functionCalls = messageData['functionCalls'] != null
+          ? (messageData['functionCalls'] as List)
+              .map((fc) => LeapFunctionCall.fromMap(fc))
+              .toList()
+          : null;
+      
+      final message = ChatMessage(
+        role: role,
+        content: messageData['content'] ?? '',
+        reasoningContent: messageData['reasoningContent'],
+        functionCalls: functionCalls,
+      );
+      
+      conversation._history.add(message);
+    }
+    
+    LeapLogger.info('Created conversation from history: $id (${history.length} messages)');
     return conversation;
   }
 

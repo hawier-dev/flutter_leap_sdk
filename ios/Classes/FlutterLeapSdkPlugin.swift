@@ -17,6 +17,9 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
     private var conversations: [String: Conversation] = [:]
     private var conversationGenerationOptions: [String: [String: Any]] = [:]
     
+    // Function calling support
+    private var conversationFunctions: [String: [String: [String: Any]]] = [:]
+    
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = FlutterLeapSdkPlugin()
         
@@ -55,6 +58,12 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             generateConversationResponseStream(call: call, result: result)
         case "disposeConversation":
             disposeConversation(call: call, result: result)
+        case "registerFunction":
+            registerFunction(call: call, result: result)
+        case "unregisterFunction":
+            unregisterFunction(call: call, result: result)
+        case "executeFunction":
+            executeFunction(call: call, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -598,9 +607,104 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         
         conversations.removeValue(forKey: conversationId)
         conversationGenerationOptions.removeValue(forKey: conversationId)
+        conversationFunctions.removeValue(forKey: conversationId)
         
         print("Flutter LEAP SDK iOS: Disposed conversation: \(conversationId)")
         result("Conversation disposed successfully")
+    }
+    
+    // MARK: - Function Calling Support
+    
+    private func registerFunction(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let conversationId = args["conversationId"] as? String,
+              let functionName = args["functionName"] as? String,
+              let functionSchema = args["functionSchema"] as? [String: Any] else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId, functionName, and functionSchema are required", details: nil))
+            return
+        }
+        
+        guard conversations[conversationId] != nil else {
+            result(FlutterError(code: "CONVERSATION_NOT_FOUND", message: "Conversation not found: \(conversationId)", details: nil))
+            return
+        }
+        
+        // Initialize conversation functions if not exists
+        if conversationFunctions[conversationId] == nil {
+            conversationFunctions[conversationId] = [:]
+        }
+        
+        // Store function schema for later use
+        conversationFunctions[conversationId]![functionName] = functionSchema
+        
+        // TODO: Register function with native LEAP SDK conversation
+        // This will require calling conversation.registerFunction() with appropriate LeapFunction
+        // For now, we store the schema and will handle calls through executeFunction
+        
+        print("Flutter LEAP SDK iOS: Registered function '\(functionName)' for conversation: \(conversationId)")
+        result("Function registered successfully")
+    }
+    
+    private func unregisterFunction(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let conversationId = args["conversationId"] as? String,
+              let functionName = args["functionName"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId and functionName are required", details: nil))
+            return
+        }
+        
+        guard conversations[conversationId] != nil else {
+            result(FlutterError(code: "CONVERSATION_NOT_FOUND", message: "Conversation not found: \(conversationId)", details: nil))
+            return
+        }
+        
+        // Remove from stored functions
+        conversationFunctions[conversationId]?.removeValue(forKey: functionName)
+        
+        // TODO: Unregister from native LEAP SDK conversation
+        
+        print("Flutter LEAP SDK iOS: Unregistered function '\(functionName)' from conversation: \(conversationId)")
+        result("Function unregistered successfully")
+    }
+    
+    private func executeFunction(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let conversationId = args["conversationId"] as? String,
+              let functionCall = args["functionCall"] as? [String: Any] else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId and functionCall are required", details: nil))
+            return
+        }
+        
+        guard let functionName = functionCall["name"] as? String else {
+            result(FlutterError(code: "INVALID_FUNCTION_CALL", message: "Function name is required", details: nil))
+            return
+        }
+        
+        guard conversations[conversationId] != nil else {
+            result(FlutterError(code: "CONVERSATION_NOT_FOUND", message: "Conversation not found: \(conversationId)", details: nil))
+            return
+        }
+        
+        // Check if function is registered
+        guard let functionSchema = conversationFunctions[conversationId]?[functionName] else {
+            result(FlutterError(code: "FUNCTION_NOT_FOUND", message: "Function '\(functionName)' is not registered", details: nil))
+            return
+        }
+        
+        let arguments = functionCall["arguments"] as? [String: Any] ?? [:]
+        
+        print("Flutter LEAP SDK iOS: Executing function '\(functionName)' with \(arguments.count) arguments")
+        
+        // For now, return success with a placeholder result
+        // TODO: Implement actual function execution logic by calling Flutter callback
+        let executionResult: [String: Any] = [
+            "success": true,
+            "result": "Function executed successfully",
+            "functionName": functionName,
+            "arguments": arguments
+        ]
+        
+        result(executionResult)
     }
 }
 

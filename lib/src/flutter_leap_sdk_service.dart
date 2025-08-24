@@ -306,6 +306,83 @@ class FlutterLeapSdkService {
     }
   }
 
+  /// Register a function for a conversation
+  static Future<String> registerFunction({
+    required String conversationId,
+    required String functionName,
+    required Map<String, dynamic> functionSchema,
+  }) async {
+    try {
+      LeapLogger.info('Registering function "$functionName" for conversation: $conversationId');
+      
+      final String result = await _channel.invokeMethod('registerFunction', {
+        'conversationId': conversationId,
+        'functionName': functionName,
+        'functionSchema': functionSchema,
+      });
+      
+      LeapLogger.info('Function "$functionName" registered successfully');
+      return result;
+    } on PlatformException catch (e) {
+      LeapLogger.error('Failed to register function "$functionName"', e);
+      throw FlutterLeapSdkException(
+        'Failed to register function: ${e.message}',
+        e.code,
+      );
+    }
+  }
+
+  /// Unregister a function from a conversation
+  static Future<String> unregisterFunction({
+    required String conversationId,
+    required String functionName,
+  }) async {
+    try {
+      LeapLogger.info('Unregistering function "$functionName" from conversation: $conversationId');
+      
+      final String result = await _channel.invokeMethod('unregisterFunction', {
+        'conversationId': conversationId,
+        'functionName': functionName,
+      });
+      
+      LeapLogger.info('Function "$functionName" unregistered successfully');
+      return result;
+    } on PlatformException catch (e) {
+      LeapLogger.error('Failed to unregister function "$functionName"', e);
+      throw FlutterLeapSdkException(
+        'Failed to unregister function: ${e.message}',
+        e.code,
+      );
+    }
+  }
+
+  /// Execute a function call
+  static Future<Map<String, dynamic>> executeFunction({
+    required String conversationId,
+    required Map<String, dynamic> functionCall,
+  }) async {
+    try {
+      final functionName = functionCall['name'] ?? 'unknown';
+      LeapLogger.info('Executing function "$functionName" for conversation: $conversationId');
+      
+      final Map<Object?, Object?> result = await _channel.invokeMethod('executeFunction', {
+        'conversationId': conversationId,
+        'functionCall': functionCall,
+      });
+      
+      final Map<String, dynamic> typedResult = result.cast<String, dynamic>();
+      
+      LeapLogger.info('Function "$functionName" executed successfully');
+      return typedResult;
+    } on PlatformException catch (e) {
+      LeapLogger.error('Failed to execute function', e);
+      throw FlutterLeapSdkException(
+        'Failed to execute function: ${e.message}',
+        e.code,
+      );
+    }
+  }
+
   /// Download a model with progress monitoring using Dio
   static Future<String> downloadModel({
     String? modelUrl,
