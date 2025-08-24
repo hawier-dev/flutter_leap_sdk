@@ -286,14 +286,7 @@ If you encounter iOS-specific issues, please [report them](https://github.com/mb
 
 ## Contributing
 
-Contributions are welcome! Areas where help is especially needed:
-
-- 📱 **iOS testing**: Help test on various iOS devices and versions
-- 🐛 **Bug reports**: Especially iOS-specific issues
-- 📖 **Documentation**: Improve examples and guides
-- ✨ **Features**: Function calling, advanced conversation management
-
-Please submit Pull Requests or [file issues](https://github.com/mbadyl/flutter_leap_sdk/issues).
+Contributions are welcome! Please feel free to submit Pull Requests or [file issues](https://github.com/mbadyl/flutter_leap_sdk/issues).
 
 ## License
 
