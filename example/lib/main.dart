@@ -645,8 +645,6 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
     _scrollToBottom();
     
     String assistantResponse = '';
-    List<LeapFunctionCall> functionCalls = [];
-    bool needsContinuation = false;
     
     try {
       
@@ -662,28 +660,21 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
           });
           _scrollToBottom();
         } else if (response is MessageResponseFunctionCalls) {
-          functionCalls.addAll(response.functionCalls);
-          print('🔧 Function calls received: ${response.functionCalls.map((c) => c.name)}');
-          // Show function call indicators
+          // Show function call indicators in UI
           setState(() {
             if (_messages.isEmpty || _messages.last.role != MessageRole.assistant) {
               _messages.add(ChatMessage.assistant(''));
             }
             String functionDisplay = assistantResponse;
-            if (functionCalls.isNotEmpty) {
-              functionDisplay += '\n\n🔧 Calling functions:\n';
-              for (final call in functionCalls) {
-                functionDisplay += '• ${call.name}(${call.arguments.entries.map((e) => '${e.key}: ${e.value}').join(', ')})\n';
-              }
+            functionDisplay += '\n\n🔧 Calling functions:\n';
+            for (final call in response.functionCalls) {
+              functionDisplay += '• ${call.name}(${call.arguments.entries.map((e) => '${e.key}: ${e.value}').join(', ')})\n';
             }
             _messages[_messages.length - 1] = ChatMessage.assistant(functionDisplay);
           });
           _scrollToBottom();
         } else if (response is MessageResponseComplete) {
-          // Mark that we need to continue if there are function calls
-          if (functionCalls.isNotEmpty) {
-            needsContinuation = true;
-          }
+          // Function calling is now handled automatically by the library
           break;
         }
       }
@@ -691,92 +682,6 @@ class _FunctionCallingTabState extends State<FunctionCallingTab> {
       setState(() {
         _messages.add(ChatMessage.assistant('Error: ${e.toString()}'));
       });
-    }
-    
-    // Handle function call continuation after first generation completes
-    while (needsContinuation && functionCalls.isNotEmpty) {
-      try {
-        // Execute function calls and get results
-        final results = await _conversation!.executeFunctionCalls(functionCalls);
-        
-        // Show function results and let model generate natural response
-        setState(() {
-          String finalDisplay = assistantResponse;
-          finalDisplay += '\n\n✅ Function executed successfully!\n';
-          
-          // Show the raw function results for debugging
-          for (final result in results) {
-            final call = result['call'] as Map<String, dynamic>;
-            final functionName = call['name'] as String;
-            final success = result['success'] as bool;
-            
-            if (success) {
-              final functionResult = result['result'] as Map<String, dynamic>;
-              
-              if (functionName == 'calculate_math_expression' && functionResult['success'] == true) {
-                final expression = functionResult['expression'];
-                final calculationResult = functionResult['result'];
-                finalDisplay += '\n🧮 $expression = $calculationResult';
-              } else if (functionName == 'get_weather') {
-                final location = functionResult['location'];
-                final temp = functionResult['temperature'];
-                final unit = functionResult['unit'];
-                final description = functionResult['description'];
-                finalDisplay += '\n🌤️ Weather in $location: $temp°${unit == 'celsius' ? 'C' : 'F'}, $description';
-              } else if (functionName == 'get_current_time') {
-                final formatted = functionResult['formatted'];
-                finalDisplay += '\n🕒 Current time: $formatted';
-              }
-            } else {
-              final error = result['error'] as String;
-              finalDisplay += '\n❌ Error executing $functionName: $error';
-            }
-          }
-          
-          _messages[_messages.length - 1] = ChatMessage.assistant(finalDisplay);
-        });
-        _scrollToBottom();
-        
-        // Now continue generation to get AI's natural response based on function results
-        try {
-          // Add a prompt to trigger continuation based on function results
-          final continuePrompt = "Based on the function results above, please provide a helpful response to the user.";
-          
-          String aiResponse = '';
-          await for (final chunk in _conversation!.generateResponseStream(continuePrompt)) {
-            aiResponse += chunk;
-            setState(() {
-              String currentDisplay = _messages.last.content;
-              // Replace or add the AI response section
-              if (currentDisplay.contains('\n\n🤖 AI Response:')) {
-                final baseContent = currentDisplay.split('\n\n🤖 AI Response:')[0];
-                currentDisplay = '$baseContent\n\n🤖 AI Response:\n$aiResponse';
-              } else {
-                currentDisplay += '\n\n🤖 AI Response:\n$aiResponse';
-              }
-              _messages[_messages.length - 1] = ChatMessage.assistant(currentDisplay);
-            });
-            _scrollToBottom();
-          }
-        } catch (e) {
-          setState(() {
-            String currentDisplay = _messages.last.content;
-            currentDisplay += '\n\n❌ Could not generate AI response: $e';
-            _messages[_messages.length - 1] = ChatMessage.assistant(currentDisplay);
-          });
-        }
-        
-        // Reset for next iteration
-        functionCalls.clear();
-        needsContinuation = false;
-      } catch (e) {
-        setState(() {
-          String errorDisplay = assistantResponse;
-          errorDisplay += '\n\n❌ Error executing functions: ${e.toString()}';
-          _messages[_messages.length - 1] = ChatMessage.assistant(errorDisplay);
-        });
-        break;
-      }
     }
     
     setState(() {
