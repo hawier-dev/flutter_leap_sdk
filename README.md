@@ -298,5 +298,4 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and release notes.
 
 ---
 
-**Author**: Mikolaj Badyl (mikolajbady0@gmail.com)  
 **Built with**: [Liquid AI LEAP SDK](https://leap.liquid.ai)
