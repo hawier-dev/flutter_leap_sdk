@@ -1152,29 +1152,47 @@ class _SettingsTabState extends State<SettingsTab> {
       setState(() {
         _downloadProgress = 0.0;
         _downloadSpeed = '';
+        _currentDownloadTaskId = 'starting'; // Set immediately to show progress
       });
+      print('🔽 Starting download of $_selectedModel');
 
       final modelBundle = availableModels[_selectedModel]!;
       final taskId = await FlutterLeapSdkService.downloadModel(
         modelName: modelBundle,
         onProgress: (progress) {
+          print('📊 Download progress: ${progress.percentage}% - ${progress.speed}');
           setState(() {
             _downloadProgress = progress.percentage;
             _downloadSpeed = progress.speed;
             
             if (progress.percentage >= 100.0) {
-              _currentDownloadTaskId = null;
               _loadModelInfo();
-              widget.onModelStatusChanged();
+              print('✅ Download completed');
+              // Hide progress after a delay to show completion
+              Future.delayed(Duration(milliseconds: 2000), () {
+                setState(() {
+                  _currentDownloadTaskId = null;
+                  _downloadProgress = 0.0;
+                  _downloadSpeed = '';
+                });
+                widget.onModelStatusChanged();
+              });
             }
           });
         },
       );
 
+      print('🆔 Download task ID: $taskId');
       setState(() {
         _currentDownloadTaskId = taskId;
       });
     } catch (e) {
+      print('❌ Download error: $e');
+      setState(() {
+        _currentDownloadTaskId = null;
+        _downloadProgress = 0.0;
+        _downloadSpeed = '';
+      });
       _showErrorDialog('Download failed: $e');
     }
   }
@@ -1318,8 +1336,8 @@ class _SettingsTabState extends State<SettingsTab> {
           
           const SizedBox(height: 16),
           
-          // Download Progress Card
-          if (_currentDownloadTaskId != null) ...[
+          // Download Progress Card - always show when downloading
+          if (_currentDownloadTaskId != null || _downloadProgress > 0) ...[
             Card(
               elevation: 4,
               color: Colors.blue.shade50,
@@ -1330,17 +1348,31 @@ class _SettingsTabState extends State<SettingsTab> {
                   children: [
                     Row(
                       children: [
-                        Icon(
-                          Icons.download,
-                          color: Colors.blue.shade600,
-                        ),
+                        // Animated download icon
+                        _currentDownloadTaskId != null
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade600),
+                                ),
+                              )
+                            : Icon(
+                                Icons.download_done,
+                                color: Colors.green.shade600,
+                              ),
                         const SizedBox(width: 8),
                         Text(
-                          'Downloading ${_selectedModel ?? 'Model'}...',
+                          _currentDownloadTaskId != null
+                              ? 'Downloading ${_selectedModel ?? 'Model'}...'
+                              : 'Download Complete',
                           style: TextStyle(
                             fontSize: 16, 
                             fontWeight: FontWeight.w600,
-                            color: Colors.blue.shade800,
+                            color: _currentDownloadTaskId != null 
+                                ? Colors.blue.shade800 
+                                : Colors.green.shade800,
                           ),
                         ),
                       ],
