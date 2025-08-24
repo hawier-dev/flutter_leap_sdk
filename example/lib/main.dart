@@ -1116,10 +1116,18 @@ class _SettingsTabState extends State<SettingsTab> {
   String _downloadSpeed = '';
   List<String> _downloadedModels = [];
   bool _isLoading = true;
+  String? _selectedModel;
+  
+  // Available models to download
+  static const Map<String, String> availableModels = {
+    'LFM2-350M': 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
+    'LFM2-1.2B': 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle',
+  };
 
   @override
   void initState() {
     super.initState();
+    _selectedModel = availableModels.keys.first; // Default to first model
     _loadModelInfo();
   }
 
@@ -1138,14 +1146,17 @@ class _SettingsTabState extends State<SettingsTab> {
   }
 
   Future<void> _downloadModel() async {
+    if (_selectedModel == null) return;
+    
     try {
       setState(() {
         _downloadProgress = 0.0;
         _downloadSpeed = '';
       });
 
+      final modelBundle = availableModels[_selectedModel]!;
       final taskId = await FlutterLeapSdkService.downloadModel(
-        modelName: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
+        modelName: modelBundle,
         onProgress: (progress) {
           setState(() {
             _downloadProgress = progress.percentage;
@@ -1184,9 +1195,12 @@ class _SettingsTabState extends State<SettingsTab> {
   }
 
   Future<void> _loadModel() async {
+    if (_selectedModel == null) return;
+    
     try {
+      final modelBundle = availableModels[_selectedModel]!;
       await FlutterLeapSdkService.loadModel(
-        modelPath: 'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle',
+        modelPath: modelBundle,
       );
       
       widget.onModelStatusChanged();
@@ -1307,19 +1321,91 @@ class _SettingsTabState extends State<SettingsTab> {
           // Download Progress Card
           if (_currentDownloadTaskId != null) ...[
             Card(
+              elevation: 4,
+              color: Colors.blue.shade50,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Download Progress',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.download,
+                          color: Colors.blue.shade600,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Downloading ${_selectedModel ?? 'Model'}...',
+                          style: TextStyle(
+                            fontSize: 16, 
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blue.shade800,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    // Progress bar with better styling
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: _downloadProgress / 100,
+                        minHeight: 8,
+                        backgroundColor: Colors.grey.shade300,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          _downloadProgress >= 100 ? Colors.green : Colors.blue,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    LinearProgressIndicator(value: _downloadProgress / 100),
-                    const SizedBox(height: 8),
-                    Text('${_downloadProgress.toInt()}% - $_downloadSpeed'),
+                    
+                    // Progress text with better formatting
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${_downloadProgress.toStringAsFixed(1)}%',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade700,
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (_downloadSpeed.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              _downloadSpeed,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.blue.shade800,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    
+                    // Cancel button during download
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _cancelDownload,
+                        icon: const Icon(Icons.cancel, size: 18),
+                        label: const Text('Cancel Download'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red.shade600,
+                          side: BorderSide(color: Colors.red.shade300),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1340,12 +1426,45 @@ class _SettingsTabState extends State<SettingsTab> {
                   ),
                   const SizedBox(height: 16),
                   
+                  // Model selection dropdown
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Select Model to Download:',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButton<String>(
+                            value: _selectedModel,
+                            isExpanded: true,
+                            onChanged: _currentDownloadTaskId != null ? null : (String? value) {
+                              setState(() {
+                                _selectedModel = value;
+                              });
+                            },
+                            items: availableModels.keys.map((String model) {
+                              return DropdownMenuItem<String>(
+                                value: model,
+                                child: Text(model),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: _currentDownloadTaskId != null ? null : _downloadModel,
                       icon: const Icon(Icons.download),
-                      label: const Text('Download Model (LFM2-350M)'),
+                      label: Text('Download ${_selectedModel ?? 'Model'}'),
                     ),
                   ),
                   const SizedBox(height: 8),
