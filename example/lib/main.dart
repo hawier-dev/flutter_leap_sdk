@@ -147,12 +147,61 @@ class _DemoScreenState extends State<DemoScreen> {
     });
 
     try {
-      // Simple generation - just get the final response
-      final response = await _conversation!.generateResponse(userMessage);
+      String assistantResponse = '';
+      bool hasFunctionCalls = false;
       
-      setState(() {
-        _messages.add(ChatMessage.assistant(response));
-      });
+      await for (final response in _conversation!.generateResponseStructured(userMessage)) {
+        if (response is MessageResponseChunk) {
+          assistantResponse += response.text;
+          setState(() {
+            if (_messages.isEmpty || _messages.last.role != MessageRole.assistant) {
+              _messages.add(ChatMessage.assistant(''));
+            }
+            _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse);
+          });
+        } else if (response is MessageResponseFunctionCalls) {
+          hasFunctionCalls = true;
+          // Execute functions
+          final results = <Map<String, dynamic>>[];
+          for (final call in response.functionCalls) {
+            try {
+              final result = await _conversation!.executeFunction(call);
+              results.add({'call': call.toMap(), 'result': result, 'success': true});
+            } catch (e) {
+              results.add({'call': call.toMap(), 'error': e.toString(), 'success': false});
+            }
+          }
+          
+          // Add results and show in UI
+          _conversation!.addFunctionResults(results);
+          
+          setState(() {
+            String functionInfo = '\n\n🔧 Function Results:\n';
+            for (final result in results) {
+              final success = result['success'] as bool;
+              
+              if (success) {
+                final functionResult = result['result'] as Map<String, dynamic>;
+                functionInfo += '📍 Weather in ${functionResult['location']}: ${functionResult['temperature']}°C, ${functionResult['description']}\n';
+              } else {
+                functionInfo += '❌ Error: ${result['error']}\n';
+              }
+            }
+            _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse + functionInfo);
+          });
+        } else if (response is MessageResponseComplete) {
+          // Final response after function calls
+          if (hasFunctionCalls && response.message.content.isNotEmpty) {
+            setState(() {
+              final currentMsg = _messages.isNotEmpty && _messages.last.role == MessageRole.assistant 
+                  ? _messages.last.content 
+                  : assistantResponse;
+              _messages[_messages.length - 1] = ChatMessage.assistant('$currentMsg\n\n💬 ${response.message.content}');
+            });
+          }
+          break;
+        }
+      }
     } catch (e) {
       setState(() {
         _messages.add(ChatMessage.assistant('Error: $e'));
