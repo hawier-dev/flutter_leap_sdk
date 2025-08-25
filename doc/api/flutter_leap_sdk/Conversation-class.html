@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, user-scalable=no">
+  <meta name="description" content="API docs for the Conversation class from the flutter_leap_sdk library, for the Dart programming language.">
+  <title>Conversation class - flutter_leap_sdk library - Dart API</title>
+
+
+  
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+  
+  <link rel="stylesheet" href="../static-assets/github.css?v1">
+  <link rel="stylesheet" href="../static-assets/styles.css?v1">
+  <link rel="icon" href="../static-assets/favicon.png?v1">
+  
+</head>
+
+<body data-base-href="../" data-using-base-href="false" class="light-theme">
+<div id="overlay-under-drawer"></div>
+<header id="title">
+  <span id="sidenav-left-toggle" class="material-symbols-outlined" role="button" tabindex="0">menu</span>
+  <ol class="breadcrumbs gt-separated dark hidden-xs">
+    <li><a href="../index.html">flutter_leap_sdk</a></li>
+    <li><a href="../flutter_leap_sdk/">flutter_leap_sdk.dart</a></li>
+    <li class="self-crumb">Conversation class</li>
+  </ol>
+  <div class="self-name">Conversation</div>
+  <form class="search navbar-right" role="search">
+    <input type="text" id="search-box" autocomplete="off" disabled class="form-control typeahead" placeholder="Loading search...">
+  </form>
+  <button class="toggle" id="theme-button" title="Toggle between light and dark mode" aria-label="Light and dark mode toggle">
+    <span id="dark-theme-button" class="material-symbols-outlined" aria-hidden="true">
+      dark_mode
+    </span>
+    <span id="light-theme-button" class="material-symbols-outlined" aria-hidden="true">
+      light_mode
+    </span>
+  </button>
+</header>
+<main>
+<div
+    id="dartdoc-main-content"
+    class="main-content"
+    data-above-sidebar="flutter_leap_sdk&#47;flutter_leap_sdk-library-sidebar.html"
+    data-below-sidebar="flutter_leap_sdk&#47;Conversation-class-sidebar.html">
+    <div>
+<h1><span class="kind-class">Conversation</span> class 
+ 
+</h1></div>
+
+    
+<section class="desc markdown">
+  <p>Represents a conversation session with persistent history and context.</p>
+<p>This class manages a stateful conversation with the LEAP model, maintaining
+message history and providing methods for generating responses within context.
+It mirrors the Conversation API from the native LEAP SDKs.</p>
+</section>
+
+
+
+    
+  <section class="summary offset-anchor" id="constructors">
+    <h2>Constructors</h2>
+    <dl class="constructor-summary-list">
+        <dt id="Conversation.new" class="callable">
+          <span class="name"><a href="../flutter_leap_sdk/Conversation/Conversation.html">Conversation.new</a></span><span class="signature">({<span class="parameter" id="-param-id"><span>required</span> <span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">id</span>, </span><span class="parameter" id="-param-systemPrompt"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a>?</span> <span class="parameter-name">systemPrompt</span>, </span><span class="parameter" id="-param-generationOptions"><span class="type-annotation"><a href="../flutter_leap_sdk/GenerationOptions-class.html">GenerationOptions</a>?</span> <span class="parameter-name">generationOptions</span></span>})</span>
+        </dt>
+        <dd>
+          Create a new conversation with optional system prompt
+        </dd>
+    </dl>
+  </section>
+    
+  <section
+      class="summary offset-anchor"
+      id="instance-properties">
+    <h2>Properties</h2>
+    <dl class="properties">
+        <dt id="generationOptions" class="property">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/generationOptions.html">generationOptions</a></span>
+  <span class="signature">&#8594; <a href="../flutter_leap_sdk/GenerationOptions-class.html">GenerationOptions</a>?</span>
+  
+
+</dt>
+<dd>
+  Current generation options
+  <div class="features"><span class="feature">no setter</span></div>
+
+</dd>
+
+        <dt id="hashCode" class="property inherited">
+  <span class="name"><a href="https://api.flutter.dev/flutter/dart-core/Object/hashCode.html">hashCode</a></span>
+  <span class="signature">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/int-class.html">int</a></span>
+  
+
+</dt>
+<dd class="inherited">
+  The hash code for this object.
+  <div class="features"><span class="feature">no setter</span><span class="feature">inherited</span></div>
+
+</dd>
+
+        <dt id="hasMessages" class="property">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/hasMessages.html">hasMessages</a></span>
+  <span class="signature">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/bool-class.html">bool</a></span>
+  
+
+</dt>
+<dd>
+  Check if conversation has any user/assistant messages (excluding system)
+  <div class="features"><span class="feature">no setter</span></div>
+
+</dd>
+
+        <dt id="history" class="property">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/history.html">history</a></span>
+  <span class="signature">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/List-class.html">List</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="../flutter_leap_sdk/ChatMessage-class.html">ChatMessage</a></span>&gt;</span></span>
+  
+
+</dt>
+<dd>
+  Get read-only view of conversation history
+  <div class="features"><span class="feature">no setter</span></div>
+
+</dd>
+
+        <dt id="id" class="property">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/id.html">id</a></span>
+  <span class="signature">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>
+  
+
+</dt>
+<dd>
+  Unique identifier for this conversation session
+  <div class="features"><span class="feature">final</span></div>
+
+</dd>
+
+        <dt id="isGenerating" class="property">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/isGenerating.html">isGenerating</a></span>
+  <span class="signature">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/bool-class.html">bool</a></span>
+  
+
+</dt>
+<dd>
+  Whether the conversation is currently generating a response
+  <div class="features"><span class="feature">no setter</span></div>
+
+</dd>
+
+        <dt id="messageCount" class="property">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/messageCount.html">messageCount</a></span>
+  <span class="signature">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/int-class.html">int</a></span>
+  
+
+</dt>
+<dd>
+  Number of messages in the conversation
+  <div class="features"><span class="feature">no setter</span></div>
+
+</dd>
+
+        <dt id="registeredFunctions" class="property">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/registeredFunctions.html">registeredFunctions</a></span>
+  <span class="signature">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/List-class.html">List</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="../flutter_leap_sdk/LeapFunction-class.html">LeapFunction</a></span>&gt;</span></span>
+  
+
+</dt>
+<dd>
+  Get all registered functions
+  <div class="features"><span class="feature">no setter</span></div>
+
+</dd>
+
+        <dt id="runtimeType" class="property inherited">
+  <span class="name"><a href="https://api.flutter.dev/flutter/dart-core/Object/runtimeType.html">runtimeType</a></span>
+  <span class="signature">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Type-class.html">Type</a></span>
+  
+
+</dt>
+<dd class="inherited">
+  A representation of the runtime type of the object.
+  <div class="features"><span class="feature">no setter</span><span class="feature">inherited</span></div>
+
+</dd>
+
+        <dt id="systemPrompt" class="property">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/systemPrompt.html">systemPrompt</a></span>
+  <span class="signature">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a>?</span>
+  
+
+</dt>
+<dd>
+  Get the system prompt for this conversation
+  <div class="features"><span class="feature">no setter</span></div>
+
+</dd>
+
+    </dl>
+  </section>
+
+    
+  <section
+      class="summary offset-anchor"
+      id="instance-methods">
+    <h2>Methods</h2>
+    <dl class="callables">
+        <dt id="addFunctionResults" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/addFunctionResults.html">addFunctionResults</a></span><span class="signature">(<wbr><span class="parameter" id="addFunctionResults-param-results"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/List-class.html">List</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/Map-class.html">Map</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>, <span class="type-parameter">dynamic</span>&gt;</span></span>&gt;</span></span> <span class="parameter-name">results</span></span>)
+    <span class="returntype parameter">&#8594; void</span>
+  </span>
+  
+
+</dt>
+<dd>
+  Add function call results to conversation history
+  
+
+</dd>
+
+        <dt id="addMessage" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/addMessage.html">addMessage</a></span><span class="signature">(<wbr><span class="parameter" id="addMessage-param-message"><span class="type-annotation"><a href="../flutter_leap_sdk/ChatMessage-class.html">ChatMessage</a></span> <span class="parameter-name">message</span></span>)
+    <span class="returntype parameter">&#8594; void</span>
+  </span>
+  
+
+</dt>
+<dd>
+  Add a message to the conversation history
+  
+
+</dd>
+
+        <dt id="cancelGeneration" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/cancelGeneration.html">cancelGeneration</a></span><span class="signature">(<wbr>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Future-class.html">Future</a><span class="signature">&lt;<wbr><span class="type-parameter">void</span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Cancel any ongoing generation
+  
+
+</dd>
+
+        <dt id="clearHistory" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/clearHistory.html">clearHistory</a></span><span class="signature">(<wbr>)
+    <span class="returntype parameter">&#8594; void</span>
+  </span>
+  
+
+</dt>
+<dd>
+  Clear all messages from the conversation (except system prompt)
+  
+
+</dd>
+
+        <dt id="executeFunction" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/executeFunction.html">executeFunction</a></span><span class="signature">(<wbr><span class="parameter" id="executeFunction-param-functionCall"><span class="type-annotation"><a href="../flutter_leap_sdk/LeapFunctionCall-class.html">LeapFunctionCall</a></span> <span class="parameter-name">functionCall</span></span>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Future-class.html">Future</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/Map-class.html">Map</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>, <span class="type-parameter">dynamic</span>&gt;</span></span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Execute a function call
+  
+
+</dd>
+
+        <dt id="exportToJSONArray" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/exportToJSONArray.html">exportToJSONArray</a></span><span class="signature">(<wbr>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/List-class.html">List</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/Map-class.html">Map</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>, <span class="type-parameter">dynamic</span>&gt;</span></span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Export conversation to JSONArray format (official LEAP SDK compatible)
+  
+
+</dd>
+
+        <dt id="generateResponse" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/generateResponse.html">generateResponse</a></span><span class="signature">(<wbr><span class="parameter" id="generateResponse-param-userMessage"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">userMessage</span></span>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Future-class.html">Future</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Generate a response to a user message
+  
+
+</dd>
+
+        <dt id="generateResponseStream" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/generateResponseStream.html">generateResponseStream</a></span><span class="signature">(<wbr><span class="parameter" id="generateResponseStream-param-userMessage"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">userMessage</span></span>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Stream-class.html">Stream</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Generate a streaming response to a user message
+  
+
+</dd>
+
+        <dt id="generateResponseStructured" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/generateResponseStructured.html">generateResponseStructured</a></span><span class="signature">(<wbr><span class="parameter" id="generateResponseStructured-param-userMessage"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">userMessage</span></span>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Stream-class.html">Stream</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="../flutter_leap_sdk/MessageResponse-class.html">MessageResponse</a></span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Generate a structured response with MessageResponse support
+  
+
+</dd>
+
+        <dt id="getStats" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/getStats.html">getStats</a></span><span class="signature">(<wbr>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Map-class.html">Map</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>, <span class="type-parameter">dynamic</span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Get conversation statistics
+  
+
+</dd>
+
+        <dt id="hasFunction" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/hasFunction.html">hasFunction</a></span><span class="signature">(<wbr><span class="parameter" id="hasFunction-param-functionName"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">functionName</span></span>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/bool-class.html">bool</a></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Check if a function is registered
+  
+
+</dd>
+
+        <dt id="noSuchMethod" class="callable inherited">
+  <span class="name"><a href="https://api.flutter.dev/flutter/dart-core/Object/noSuchMethod.html">noSuchMethod</a></span><span class="signature">(<wbr><span class="parameter" id="noSuchMethod-param-invocation"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/Invocation-class.html">Invocation</a></span> <span class="parameter-name">invocation</span></span>)
+    <span class="returntype parameter">&#8594; dynamic</span>
+  </span>
+  
+
+</dt>
+<dd class="inherited">
+  Invoked when a nonexistent method or property is accessed.
+  <div class="features"><span class="feature">inherited</span></div>
+
+</dd>
+
+        <dt id="registerFunction" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/registerFunction.html">registerFunction</a></span><span class="signature">(<wbr><span class="parameter" id="registerFunction-param-function"><span class="type-annotation"><a href="../flutter_leap_sdk/LeapFunction-class.html">LeapFunction</a></span> <span class="parameter-name">function</span></span>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Future-class.html">Future</a><span class="signature">&lt;<wbr><span class="type-parameter">void</span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Register a function for the model to call
+  
+
+</dd>
+
+        <dt id="removeLastMessage" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/removeLastMessage.html">removeLastMessage</a></span><span class="signature">(<wbr>)
+    <span class="returntype parameter">&#8594; <a href="../flutter_leap_sdk/ChatMessage-class.html">ChatMessage</a>?</span>
+  </span>
+  
+
+</dt>
+<dd>
+  Remove the last message from the conversation
+  
+
+</dd>
+
+        <dt id="toJson" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/toJson.html">toJson</a></span><span class="signature">(<wbr>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Export conversation to JSON string (Flutter custom format)
+  
+
+</dd>
+
+        <dt id="toMap" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/toMap.html">toMap</a></span><span class="signature">(<wbr>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Map-class.html">Map</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>, <span class="type-parameter">dynamic</span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Export conversation to a map
+  
+
+</dd>
+
+        <dt id="toString" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/toString.html">toString</a></span><span class="signature">(<wbr>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>
+  </span>
+  
+
+</dt>
+<dd>
+  A string representation of this object.
+  <div class="features"><span class="feature">override</span></div>
+
+</dd>
+
+        <dt id="unregisterFunction" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/unregisterFunction.html">unregisterFunction</a></span><span class="signature">(<wbr><span class="parameter" id="unregisterFunction-param-functionName"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">functionName</span></span>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Future-class.html">Future</a><span class="signature">&lt;<wbr><span class="type-parameter">void</span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Unregister a function
+  
+
+</dd>
+
+        <dt id="updateGenerationOptions" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/updateGenerationOptions.html">updateGenerationOptions</a></span><span class="signature">(<wbr><span class="parameter" id="updateGenerationOptions-param-options"><span class="type-annotation"><a href="../flutter_leap_sdk/GenerationOptions-class.html">GenerationOptions</a>?</span> <span class="parameter-name">options</span></span>)
+    <span class="returntype parameter">&#8594; void</span>
+  </span>
+  
+
+</dt>
+<dd>
+  Update generation options for this conversation
+  
+
+</dd>
+
+        <dt id="updateSystemPrompt" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/updateSystemPrompt.html">updateSystemPrompt</a></span><span class="signature">(<wbr><span class="parameter" id="updateSystemPrompt-param-systemPrompt"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a>?</span> <span class="parameter-name">systemPrompt</span></span>)
+    <span class="returntype parameter">&#8594; void</span>
+  </span>
+  
+
+</dt>
+<dd>
+  Update the system prompt for this conversation
+  
+
+</dd>
+
+    </dl>
+  </section>
+    
+  <section
+      class="summary offset-anchor inherited"
+      id="operators">
+    <h2>Operators</h2>
+    <dl class="callables">
+        <dt id="operator ==" class="callable inherited">
+  <span class="name"><a href="https://api.flutter.dev/flutter/dart-core/Object/operator_equals.html">operator ==</a></span><span class="signature">(<wbr><span class="parameter" id="==-param-other"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/Object-class.html">Object</a></span> <span class="parameter-name">other</span></span>)
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/bool-class.html">bool</a></span>
+  </span>
+  
+
+</dt>
+<dd class="inherited">
+  The equality operator.
+  <div class="features"><span class="feature">inherited</span></div>
+
+</dd>
+
+    </dl>
+  </section>
+    
+    
+  <section class="summary offset-anchor" id="static-methods">
+    <h2>Static Methods</h2>
+    <dl class="callables">
+        <dt id="createConversationFromHistory" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/createConversationFromHistory.html">createConversationFromHistory</a></span><span class="signature">(<wbr>{<span class="parameter" id="createConversationFromHistory-param-id"><span>required</span> <span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">id</span>, </span><span class="parameter" id="createConversationFromHistory-param-history"><span>required</span> <span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/List-class.html">List</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/Map-class.html">Map</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>, <span class="type-parameter">dynamic</span>&gt;</span></span>&gt;</span></span> <span class="parameter-name">history</span>, </span><span class="parameter" id="createConversationFromHistory-param-systemPrompt"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a>?</span> <span class="parameter-name">systemPrompt</span>, </span><span class="parameter" id="createConversationFromHistory-param-generationOptions"><span class="type-annotation"><a href="../flutter_leap_sdk/GenerationOptions-class.html">GenerationOptions</a>?</span> <span class="parameter-name">generationOptions</span></span>})
+    <span class="returntype parameter">&#8594; <a href="../flutter_leap_sdk/Conversation-class.html">Conversation</a></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Create conversation from history array (official LEAP SDK compatible)
+  
+
+</dd>
+
+        <dt id="fromJson" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/Conversation/fromJson.html">fromJson</a></span><span class="signature">(<wbr><span class="parameter" id="fromJson-param-jsonString"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">jsonString</span></span>)
+    <span class="returntype parameter">&#8594; <a href="../flutter_leap_sdk/Conversation-class.html">Conversation</a></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Create conversation from JSON string
+  
+
+</dd>
+
+    </dl>
+  </section>
+    
+
+  </div> <!-- /.main-content -->
+  <div id="dartdoc-sidebar-left" class="sidebar sidebar-offcanvas-left">
+    <!-- The search input and breadcrumbs below are only responsively visible at low resolutions. -->
+<header id="header-search-sidebar" class="hidden-l">
+  <form class="search-sidebar" role="search">
+    <input type="text" id="search-sidebar" autocomplete="off" disabled class="form-control typeahead" placeholder="Loading search...">
+  </form>
+</header>
+<ol class="breadcrumbs gt-separated dark hidden-l" id="sidebar-nav">
+    <li><a href="../index.html">flutter_leap_sdk</a></li>
+    <li><a href="../flutter_leap_sdk/">flutter_leap_sdk</a></li>
+    <li class="self-crumb">Conversation class</li>
+</ol>
+
+    <h5>flutter_leap_sdk library</h5>
+    <div id="dartdoc-sidebar-left-content"></div>
+  </div>
+  <div id="dartdoc-sidebar-right" class="sidebar sidebar-offcanvas-right">
+  </div><!--/.sidebar-offcanvas-->
+</main>
+<footer>
+  <span class="no-break">
+    flutter_leap_sdk
+      0.1.0
+  </span>
+  
+</footer>
+
+
+<script src="../static-assets/highlight.pack.js?v1"></script>
+<script src="../static-assets/docs.dart.js"></script>
+
+</body>
+</html>
+

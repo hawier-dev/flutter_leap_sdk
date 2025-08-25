@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, user-scalable=no">
+  <meta name="description" content="API docs for the generateConversationResponseStructured method from the FlutterLeapSdkService class, for the Dart programming language.">
+  <title>generateConversationResponseStructured method - FlutterLeapSdkService class - flutter_leap_sdk library - Dart API</title>
+
+
+  
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+  
+  <link rel="stylesheet" href="../../static-assets/github.css?v1">
+  <link rel="stylesheet" href="../../static-assets/styles.css?v1">
+  <link rel="icon" href="../../static-assets/favicon.png?v1">
+  
+</head>
+
+<body data-base-href="../../" data-using-base-href="false" class="light-theme">
+<div id="overlay-under-drawer"></div>
+<header id="title">
+  <span id="sidenav-left-toggle" class="material-symbols-outlined" role="button" tabindex="0">menu</span>
+  <ol class="breadcrumbs gt-separated dark hidden-xs">
+    <li><a href="../../index.html">flutter_leap_sdk</a></li>
+    <li><a href="../../flutter_leap_sdk/">flutter_leap_sdk.dart</a></li>
+    <li><a href="../../flutter_leap_sdk/FlutterLeapSdkService-class.html">FlutterLeapSdkService</a></li>
+    <li class="self-crumb">generateConversationResponseStructured static method</li>
+  </ol>
+  <div class="self-name">generateConversationResponseStructured</div>
+  <form class="search navbar-right" role="search">
+    <input type="text" id="search-box" autocomplete="off" disabled class="form-control typeahead" placeholder="Loading search...">
+  </form>
+  <button class="toggle" id="theme-button" title="Toggle between light and dark mode" aria-label="Light and dark mode toggle">
+    <span id="dark-theme-button" class="material-symbols-outlined" aria-hidden="true">
+      dark_mode
+    </span>
+    <span id="light-theme-button" class="material-symbols-outlined" aria-hidden="true">
+      light_mode
+    </span>
+  </button>
+</header>
+<main>
+<div
+    id="dartdoc-main-content"
+    class="main-content"
+    data-above-sidebar="flutter_leap_sdk&#47;FlutterLeapSdkService-class-sidebar.html"
+    data-below-sidebar="">
+    <div>
+<h1><span class="kind-method">generateConversationResponseStructured</span> static method 
+</h1></div>
+
+    <section class="multi-line-signature">
+      
+<span class="returntype"><a href="https://api.flutter.dev/flutter/dart-core/Stream-class.html">Stream</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="../../flutter_leap_sdk/MessageResponse-class.html">MessageResponse</a></span>&gt;</span></span>
+<span class="name ">generateConversationResponseStructured</span>(<wbr>{<ol class="parameter-list"> <li><span class="parameter" id="generateConversationResponseStructured-param-conversationId"><span>required</span> <span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">conversationId</span>, </span></li>
+<li><span class="parameter" id="generateConversationResponseStructured-param-message"><span>required</span> <span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">message</span>, </span></li>
+<li><span class="parameter" id="generateConversationResponseStructured-param-history"><span>required</span> <span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/List-class.html">List</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="../../flutter_leap_sdk/ChatMessage-class.html">ChatMessage</a></span>&gt;</span></span> <span class="parameter-name">history</span>, </span></li>
+<li><span class="parameter" id="generateConversationResponseStructured-param-generationOptions"><span class="type-annotation"><a href="../../flutter_leap_sdk/GenerationOptions-class.html">GenerationOptions</a>?</span> <span class="parameter-name">generationOptions</span>, </span></li>
+</ol>})
+
+      
+
+    </section>
+    
+<section class="desc markdown">
+  <p>Generate structured streaming response for conversations with MessageResponse objects</p>
+</section>
+
+
+    
+<section class="summary source-code" id="source">
+  <h2><span>Implementation</span></h2>
+  <pre class="language-dart"><code class="language-dart">static Stream&lt;MessageResponse&gt; generateConversationResponseStructured({
+  required String conversationId,
+  required String message,
+  required List&lt;ChatMessage&gt; history,
+  GenerationOptions? generationOptions,
+}) async* {
+  try {
+    await _channel.invokeMethod(&#39;generateConversationResponseStream&#39;, {
+      &#39;conversationId&#39;: conversationId,
+      &#39;message&#39;: message,
+      &#39;history&#39;: history.map((m) =&gt; m.toMap()).toList(),
+      &#39;generationOptions&#39;: generationOptions?.toMap(),
+    });
+
+    await for (final data in _streamChannel.receiveBroadcastStream()) {
+      &#47;&#47; Handle error data specially
+      if (data is Map &amp;&amp; data.containsKey(&#39;error&#39;)) {
+        final errorMap = Map&lt;String, dynamic&gt;.from(data);
+        final errorCode = errorMap[&#39;code&#39;] as String? ?? &#39;UNKNOWN_ERROR&#39;;
+        final errorMessage = errorMap[&#39;message&#39;] as String? ?? &#39;Unknown error occurred&#39;;
+
+        if (errorCode == &#39;GENERATION_TIMEOUT&#39; || errorMessage.contains(&#39;stopped unexpectedly&#39;)) {
+          throw GenerationException(&#39;Generation stopped unexpectedly&#39;, errorCode);
+        } else {
+          throw GenerationException(errorMessage, errorCode);
+        }
+      }
+
+      if (data is String) {
+        if (data == &#39;&lt;STREAM_END&gt;&#39;) {
+          yield MessageResponseComplete(
+            message: ChatMessage.assistant(&#39;&#39;), &#47;&#47; Will be updated by conversation
+            finishReason: GenerationFinishReason.stop,
+            stats: null,
+          );
+          break;
+        } else {
+          &#47;&#47; Plain text chunk
+          yield MessageResponseChunk(data);
+        }
+      } else if (data is Map) {
+        &#47;&#47; Handle structured responses from native - cast to Map&lt;String, dynamic&gt;
+        final dataMap = Map&lt;String, dynamic&gt;.from(data);
+        final type = dataMap[&#39;type&#39;] as String?;
+        switch (type) {
+          case &#39;chunk&#39;:
+            final text = dataMap[&#39;text&#39;] as String? ?? &#39;&#39;;
+            yield MessageResponseChunk(text);
+            break;
+          case &#39;reasoningChunk&#39;:
+            final reasoning = dataMap[&#39;reasoning&#39;] as String? ?? &#39;&#39;;
+            yield MessageResponseReasoningChunk(reasoning);
+            break;
+          case &#39;functionCalls&#39;:
+            final functionCallsData = dataMap[&#39;functionCalls&#39;] as List&lt;dynamic&gt;? ?? [];
+            final functionCalls = functionCallsData.map((callData) =&gt;
+              LeapFunctionCall.fromMap(Map&lt;String, dynamic&gt;.from(callData as Map))
+            ).toList();
+            yield MessageResponseFunctionCalls(functionCalls);
+            break;
+          case &#39;complete&#39;:
+            final finishReasonStr = dataMap[&#39;finishReason&#39;] as String? ?? &#39;stop&#39;;
+            final finishReason = GenerationFinishReason.values.firstWhere(
+              (e) =&gt; e.name == finishReasonStr,
+              orElse: () =&gt; GenerationFinishReason.stop,
+            );
+
+            yield MessageResponseComplete(
+              message: ChatMessage.assistant(&#39;&#39;), &#47;&#47; Will be updated by conversation
+              finishReason: finishReason,
+              stats: null, &#47;&#47; TODO: Parse stats from native
+            );
+            break;
+          default:
+            &#47;&#47; Unknown type, treat as chunk
+            yield MessageResponseChunk(data.toString());
+        }
+      }
+    }
+
+  } on PlatformException catch (e) {
+    &#47;&#47; Handle specific timeout and generation errors
+    if (e.code == &#39;GENERATION_TIMEOUT&#39; || e.code == &#39;GENERATION_ERROR&#39; ||
+        (e.message != null &amp;&amp; e.message!.contains(&#39;stopped unexpectedly&#39;))) {
+      throw GenerationException(&#39;Generation stopped unexpectedly&#39;, e.code);
+    }
+
+    throw GenerationException(&#39;Failed to generate structured streaming response: ${e.message}&#39;, e.code);
+  }
+}</code></pre>
+</section>
+
+
+  </div> <!-- /.main-content -->
+  <div id="dartdoc-sidebar-left" class="sidebar sidebar-offcanvas-left">
+    <!-- The search input and breadcrumbs below are only responsively visible at low resolutions. -->
+<header id="header-search-sidebar" class="hidden-l">
+  <form class="search-sidebar" role="search">
+    <input type="text" id="search-sidebar" autocomplete="off" disabled class="form-control typeahead" placeholder="Loading search...">
+  </form>
+</header>
+<ol class="breadcrumbs gt-separated dark hidden-l" id="sidebar-nav">
+    <li><a href="../../index.html">flutter_leap_sdk</a></li>
+    <li><a href="../../flutter_leap_sdk/">flutter_leap_sdk</a></li>
+    <li><a href="../../flutter_leap_sdk/FlutterLeapSdkService-class.html">FlutterLeapSdkService</a></li>
+    <li class="self-crumb">generateConversationResponseStructured static method</li>
+</ol>
+
+    <h5>FlutterLeapSdkService class</h5>
+    <div id="dartdoc-sidebar-left-content"></div>
+  </div><!--/.sidebar-offcanvas-->
+  <div id="dartdoc-sidebar-right" class="sidebar sidebar-offcanvas-right">
+</div><!--/.sidebar-offcanvas-->
+</main>
+<footer>
+  <span class="no-break">
+    flutter_leap_sdk
+      0.1.0
+  </span>
+  
+</footer>
+
+
+<script src="../../static-assets/highlight.pack.js?v1"></script>
+<script src="../../static-assets/docs.dart.js"></script>
+
+</body>
+</html>
+

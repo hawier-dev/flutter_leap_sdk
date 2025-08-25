@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, user-scalable=no">
+  <meta name="description" content="API docs for the generateResponseStructured method from the Conversation class, for the Dart programming language.">
+  <title>generateResponseStructured method - Conversation class - flutter_leap_sdk library - Dart API</title>
+
+
+  
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+  
+  <link rel="stylesheet" href="../../static-assets/github.css?v1">
+  <link rel="stylesheet" href="../../static-assets/styles.css?v1">
+  <link rel="icon" href="../../static-assets/favicon.png?v1">
+  
+</head>
+
+<body data-base-href="../../" data-using-base-href="false" class="light-theme">
+<div id="overlay-under-drawer"></div>
+<header id="title">
+  <span id="sidenav-left-toggle" class="material-symbols-outlined" role="button" tabindex="0">menu</span>
+  <ol class="breadcrumbs gt-separated dark hidden-xs">
+    <li><a href="../../index.html">flutter_leap_sdk</a></li>
+    <li><a href="../../flutter_leap_sdk/">flutter_leap_sdk.dart</a></li>
+    <li><a href="../../flutter_leap_sdk/Conversation-class.html">Conversation</a></li>
+    <li class="self-crumb">generateResponseStructured method</li>
+  </ol>
+  <div class="self-name">generateResponseStructured</div>
+  <form class="search navbar-right" role="search">
+    <input type="text" id="search-box" autocomplete="off" disabled class="form-control typeahead" placeholder="Loading search...">
+  </form>
+  <button class="toggle" id="theme-button" title="Toggle between light and dark mode" aria-label="Light and dark mode toggle">
+    <span id="dark-theme-button" class="material-symbols-outlined" aria-hidden="true">
+      dark_mode
+    </span>
+    <span id="light-theme-button" class="material-symbols-outlined" aria-hidden="true">
+      light_mode
+    </span>
+  </button>
+</header>
+<main>
+<div
+    id="dartdoc-main-content"
+    class="main-content"
+    data-above-sidebar="flutter_leap_sdk&#47;Conversation-class-sidebar.html"
+    data-below-sidebar="">
+    <div>
+<h1><span class="kind-method">generateResponseStructured</span> method 
+</h1></div>
+
+    <section class="multi-line-signature">
+      
+<span class="returntype"><a href="https://api.flutter.dev/flutter/dart-core/Stream-class.html">Stream</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="../../flutter_leap_sdk/MessageResponse-class.html">MessageResponse</a></span>&gt;</span></span>
+<span class="name ">generateResponseStructured</span>(<wbr><ol class="parameter-list single-line"> <li><span class="parameter" id="generateResponseStructured-param-userMessage"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">userMessage</span></span></li>
+</ol>)
+
+      
+
+    </section>
+    
+<section class="desc markdown">
+  <p>Generate a structured response with MessageResponse support</p>
+<p>This method returns structured MessageResponse objects instead of plain strings,
+allowing access to chunks, reasoning, function calls, and completion info.</p>
+</section>
+
+
+    
+<section class="summary source-code" id="source">
+  <h2><span>Implementation</span></h2>
+  <pre class="language-dart"><code class="language-dart">Stream&lt;MessageResponse&gt; generateResponseStructured(String userMessage) async* {
+  if (userMessage.trim().isEmpty) {
+    throw GenerationException(&#39;Message cannot be empty&#39;, &#39;INVALID_INPUT&#39;);
+  }
+
+  if (_isGenerating) {
+    throw GenerationException(&#39;Conversation is already generating a response&#39;, &#39;GENERATION_IN_PROGRESS&#39;);
+  }
+
+  _isGenerating = true;
+
+  try {
+    &#47;&#47; Add user message to history
+    final userMsg = ChatMessage.user(userMessage);
+    addMessage(userMsg);
+
+
+    String fullResponse = &#39;&#39;;
+    String fullReasoning = &#39;&#39;;
+    List&lt;LeapFunctionCall&gt; functionCalls = [];
+
+    &#47;&#47; Generate streaming response using the service
+    bool hasReceivedAnyResponse = false;
+    await for (final response in FlutterLeapSdkService.generateConversationResponseStructured(
+      conversationId: id,
+      message: userMessage,
+      history: _history,
+      generationOptions: _generationOptions,
+    )) {
+      hasReceivedAnyResponse = true;
+
+      if (response is MessageResponseChunk) {
+        fullResponse += response.text;
+        yield response;
+      } else if (response is MessageResponseReasoningChunk) {
+        fullReasoning += response.reasoning;
+        yield response;
+      } else if (response is MessageResponseFunctionCalls) {
+        functionCalls.addAll(response.functionCalls);
+        yield response;
+      } else if (response is MessageResponseComplete) {
+        &#47;&#47; Create completion response with accumulated data
+        final assistantMsg = ChatMessage.assistant(
+          fullResponse,
+          reasoningContent: fullReasoning.isEmpty ? null : fullReasoning,
+          functionCalls: functionCalls.isEmpty ? null : functionCalls,
+        );
+
+        addMessage(assistantMsg);
+
+        yield MessageResponseComplete(
+          message: assistantMsg,
+          finishReason: functionCalls.isNotEmpty ? GenerationFinishReason.functionCall : response.finishReason,
+          stats: response.stats,
+        );
+        break;
+      }
+    }
+
+    &#47;&#47; If stream ended without completion response and we have some content, create completion
+    if (!hasReceivedAnyResponse || (fullResponse.isNotEmpty &amp;&amp; !_history.any((m) =&gt; m.content == fullResponse))) {
+
+      if (fullResponse.isNotEmpty || functionCalls.isNotEmpty) {
+        final assistantMsg = ChatMessage.assistant(
+          fullResponse.isEmpty ? &#39;[Generation stopped unexpectedly]&#39; : fullResponse,
+          reasoningContent: fullReasoning.isEmpty ? null : fullReasoning,
+          functionCalls: functionCalls.isEmpty ? null : functionCalls,
+        );
+
+        addMessage(assistantMsg);
+
+        yield MessageResponseComplete(
+          message: assistantMsg,
+          finishReason: GenerationFinishReason.stop,
+          stats: null,
+        );
+      }
+    }
+
+
+  } catch (e) {
+    rethrow;
+  } finally {
+    _isGenerating = false;
+  }
+}</code></pre>
+</section>
+
+
+  </div> <!-- /.main-content -->
+  <div id="dartdoc-sidebar-left" class="sidebar sidebar-offcanvas-left">
+    <!-- The search input and breadcrumbs below are only responsively visible at low resolutions. -->
+<header id="header-search-sidebar" class="hidden-l">
+  <form class="search-sidebar" role="search">
+    <input type="text" id="search-sidebar" autocomplete="off" disabled class="form-control typeahead" placeholder="Loading search...">
+  </form>
+</header>
+<ol class="breadcrumbs gt-separated dark hidden-l" id="sidebar-nav">
+    <li><a href="../../index.html">flutter_leap_sdk</a></li>
+    <li><a href="../../flutter_leap_sdk/">flutter_leap_sdk</a></li>
+    <li><a href="../../flutter_leap_sdk/Conversation-class.html">Conversation</a></li>
+    <li class="self-crumb">generateResponseStructured method</li>
+</ol>
+
+    <h5>Conversation class</h5>
+    <div id="dartdoc-sidebar-left-content"></div>
+  </div><!--/.sidebar-offcanvas-->
+  <div id="dartdoc-sidebar-right" class="sidebar sidebar-offcanvas-right">
+</div><!--/.sidebar-offcanvas-->
+</main>
+<footer>
+  <span class="no-break">
+    flutter_leap_sdk
+      0.1.0
+  </span>
+  
+</footer>
+
+
+<script src="../../static-assets/highlight.pack.js?v1"></script>
+<script src="../../static-assets/docs.dart.js"></script>
+
+</body>
+</html>
+

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, user-scalable=no">
+  <meta name="description" content="flutter_leap_sdk API docs, for the Dart programming language.">
+  <title>flutter_leap_sdk - Dart API docs</title>
+
+
+  
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+  
+  <link rel="stylesheet" href="static-assets/github.css?v1">
+  <link rel="stylesheet" href="static-assets/styles.css?v1">
+  <link rel="icon" href="static-assets/favicon.png?v1">
+  
+</head>
+
+<body data-base-href="" data-using-base-href="false" class="light-theme">
+<div id="overlay-under-drawer"></div>
+<header id="title">
+  <span id="sidenav-left-toggle" class="material-symbols-outlined" role="button" tabindex="0">menu</span>
+  <ol class="breadcrumbs gt-separated dark hidden-xs">
+    <li><a href="https://github.com/hawier-dev/flutter_leap_sdk">flutter_leap_sdk package</a></li>
+  </ol>
+  <div class="self-name">flutter_leap_sdk</div>
+  <form class="search navbar-right" role="search">
+    <input type="text" id="search-box" autocomplete="off" disabled class="form-control typeahead" placeholder="Loading search...">
+  </form>
+  <button class="toggle" id="theme-button" title="Toggle between light and dark mode" aria-label="Light and dark mode toggle">
+    <span id="dark-theme-button" class="material-symbols-outlined" aria-hidden="true">
+      dark_mode
+    </span>
+    <span id="light-theme-button" class="material-symbols-outlined" aria-hidden="true">
+      light_mode
+    </span>
+  </button>
+</header>
+<main>
+  <div id="dartdoc-main-content" class="main-content">
+      
+<section class="desc markdown">
+  <h1 id="flutter-leap-sdk">Flutter LEAP SDK</h1>
+<p>A Flutter plugin for integrating Liquid AI's LEAP SDK, enabling on-device deployment of small language models in Flutter applications.</p>
+<h2 id="platform-support">Platform Support</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Android</td>
+<td>✅ Fully Supported</td>
+<td>API 31+, arm64-v8a, extensively tested</td>
+</tr>
+<tr>
+<td>iOS</td>
+<td>⚠️  Supported</td>
+<td>iOS 15+, 64-bit architecture, <strong>not 100% tested</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="features">Features</h2>
+<ul>
+<li>✅ <strong>Model Management</strong>: Download, load, unload, and delete models</li>
+<li>✅ <strong>Progress Tracking</strong>: Real-time download progress with throttling</li>
+<li>✅ <strong>Text Generation</strong>: Both blocking and streaming responses</li>
+<li>✅ <strong>Conversation Support</strong>: Persistent conversation history and context</li>
+<li>✅ <strong>Function Calling</strong>: Register and execute custom functions (experimental)</li>
+<li>✅ <strong>Error Handling</strong>: Comprehensive exception system with detailed error codes</li>
+<li>✅ <strong>Memory Management</strong>: Efficient model lifecycle with cleanup</li>
+<li>✅ <strong>Built on Official LEAP SDK</strong>: Uses Liquid AI's native SDK (v0.4.0)</li>
+<li>✅ <strong>Secure Logging</strong>: Production-safe logging system with sensitive data protection</li>
+</ul>
+<h2 id="getting-started">Getting Started</h2>
+<h3 id="prerequisites">Prerequisites</h3>
+<ul>
+<li>Flutter SDK</li>
+<li><strong>Android</strong>: Device with <code>arm64-v8a</code> ABI, minimum API level 31</li>
+<li><strong>iOS</strong>: Device with iOS 15+, 64-bit architecture (iPhone 6s and newer)</li>
+<li>3GB+ RAM recommended for model execution</li>
+</ul>
+<h3 id="installation">Installation</h3>
+<p>Add this to your <code>pubspec.yaml</code>:</p>
+<pre class="language-yaml"><code class="language-yaml">dependencies:
+  flutter_leap_sdk: ^0.1.0
+</code></pre>
+<h2 id="usage">Usage</h2>
+<h3 id="basic-usage">Basic Usage</h3>
+<pre class="language-dart"><code class="language-dart">import 'package:flutter_leap_sdk/flutter_leap_sdk.dart';
+
+// Download a model (using display name for convenience)
+await FlutterLeapSdkService.downloadModel(
+  modelName: 'LFM2-350M', // Display name or full filename
+  onProgress: (progress) =&gt; print('Download: ${progress.percentage}%'),
+);
+
+// Load the model (supports display names)
+await FlutterLeapSdkService.loadModel(
+  modelPath: 'LFM2-350M', // Will resolve to full filename automatically
+);
+
+// Generate response
+String response = await FlutterLeapSdkService.generateResponse(
+  'Hello, AI!',
+  systemPrompt: 'You are a helpful assistant.',
+);
+print(response);
+
+// Or use streaming for real-time responses
+FlutterLeapSdkService.generateResponseStream('Hello, AI!').listen(
+  (chunk) =&gt; print('Chunk: $chunk'),
+  onDone: () =&gt; print('Generation complete'),
+  onError: (error) =&gt; print('Error: $error'),
+);
+</code></pre>
+<h3 id="available-models">Available Models</h3>
+<p>All models are downloaded from Hugging Face and cached locally:</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Size</th>
+<th>Description</th>
+<th>Use Case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>LFM2-350M</strong></td>
+<td>322 MB</td>
+<td>Smallest model</td>
+<td>Basic chat, simple tasks, testing</td>
+</tr>
+<tr>
+<td><strong>LFM2-700M</strong></td>
+<td>610 MB</td>
+<td>Balanced model</td>
+<td>General purpose, good performance/size ratio</td>
+</tr>
+<tr>
+<td><strong>LFM2-1.2B</strong></td>
+<td>924 MB</td>
+<td>Largest model</td>
+<td>Best quality, complex reasoning tasks</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Note</strong>: Models are automatically downloaded to the app's documents directory under <code>/leap/</code> folder.</p>
+</blockquote>
+<h3 id="complete-example">Complete Example</h3>
+<pre class="language-dart"><code class="language-dart">import 'package:flutter/material.dart';
+import 'package:flutter_leap_sdk/flutter_leap_sdk.dart';
+
+class ChatScreen extends StatefulWidget {
+  @override
+  _ChatScreenState createState() =&gt; _ChatScreenState();
+}
+
+class _ChatScreenState extends State&lt;ChatScreen&gt; {
+  bool isModelLoaded = false;
+  String response = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeModel();
+  }
+
+  Future&lt;void&gt; _initializeModel() async {
+    try {
+      // Check if model exists, download if not
+      bool exists = await FlutterLeapSdkService.checkModelExists(
+        'LFM2-350M-8da4w_output_8da8w-seq_4096.bundle'
+      );
+      
+      if (!exists) {
+        await FlutterLeapSdkService.downloadModel(
+          modelName: 'LFM2-350M', // Using display name for convenience
+          onProgress: (progress) {
+            print('Download progress: ${progress.percentage}%');
+            // Progress includes: bytesDownloaded, totalBytes, percentage
+          },
+        );
+      }
+
+      // Load the model with options
+      await FlutterLeapSdkService.loadModel(
+        modelPath: 'LFM2-350M',
+        options: ModelLoadingOptions(
+          randomSeed: 42,
+          cpuThreads: 4,
+        ),
+      );
+      
+      setState(() {
+        isModelLoaded = true;
+      });
+    } catch (e) {
+      print('Error initializing model: $e');
+    }
+  }
+
+  Future&lt;void&gt; _generateResponse(String message) async {
+    if (!isModelLoaded) return;
+    
+    setState(() {
+      response = '';
+    });
+
+    try {
+      // Use streaming for real-time response
+      FlutterLeapSdkService.generateResponseStream(message).listen(
+        (chunk) {
+          setState(() {
+            response += chunk;
+          });
+        },
+      );
+    } catch (e) {
+      print('Error generating response: $e');
+    }
+  }
+}
+</code></pre>
+<h2 id="advanced-usage">Advanced Usage</h2>
+<h3 id="conversation-management">Conversation Management</h3>
+<pre class="language-dart"><code class="language-dart">// Create a persistent conversation
+Conversation conversation = await FlutterLeapSdkService.createConversation(
+  systemPrompt: 'You are a helpful coding assistant.',
+  generationOptions: GenerationOptions(
+    temperature: 0.7,
+    maxTokens: 1000,
+  ),
+);
+
+// Generate responses within conversation context
+String response = await conversation.generateResponse('Explain async/await in Dart');
+
+// Use streaming with conversation
+conversation.generateResponseStream('What are futures?').listen(
+  (chunk) =&gt; print(chunk),
+);
+
+// Conversation automatically maintains history
+print('History: ${conversation.history.length} messages');
+</code></pre>
+<h3 id="error-handling">Error Handling</h3>
+<pre class="language-dart"><code class="language-dart">try {
+  await FlutterLeapSdkService.loadModel(modelPath: 'nonexistent-model');
+} on ModelLoadingException catch (e) {
+  print('Failed to load model: ${e.message} (${e.code})');
+} on ModelNotLoadedException catch (e) {
+  print('Model not loaded: ${e.message}');
+} on FlutterLeapSdkException catch (e) {
+  print('SDK error: ${e.message} (${e.code})');
+}
+</code></pre>
+<h2 id="api-reference">API Reference</h2>
+<h3 id="flutterleapsdkservice">FlutterLeapSdkService</h3>
+<h4 id="model-management">Model Management</h4>
+<ul>
+<li><code>loadModel({String? modelPath, ModelLoadingOptions? options})</code> - Load model with options</li>
+<li><code>unloadModel()</code> - Unload current model and free memory</li>
+<li><code>checkModelLoaded()</code> - Check if model is loaded</li>
+<li><code>checkModelExists(String modelName)</code> - Check if model file exists</li>
+<li><code>getDownloadedModels()</code> - List all local models</li>
+<li><code>deleteModel(String fileName)</code> - Delete model file</li>
+<li><code>getModelInfo(String fileName)</code> - Get model metadata</li>
+</ul>
+<h4 id="text-generation">Text Generation</h4>
+<ul>
+<li><code>generateResponse(String message, {String? systemPrompt, GenerationOptions? options})</code> - Generate complete response</li>
+<li><code>generateResponseStream(String message, {String? systemPrompt, GenerationOptions? options})</code> - Streaming generation</li>
+<li><code>cancelStreaming()</code> - Cancel active streaming</li>
+</ul>
+<h4 id="conversation-management-2">Conversation Management</h4>
+<ul>
+<li><code>createConversation({String? systemPrompt, GenerationOptions? options})</code> - Create conversation</li>
+<li><code>getConversation(String id)</code> - Get existing conversation</li>
+<li><code>disposeConversation(String id)</code> - Clean up conversation resources</li>
+</ul>
+<h4 id="download-management">Download Management</h4>
+<ul>
+<li><code>downloadModel({String? modelUrl, String? modelName, Function(DownloadProgress)? onProgress})</code> - Download with progress</li>
+<li><code>cancelDownload(String downloadId)</code> - Cancel ongoing download</li>
+<li><code>getActiveDownloads()</code> - List active download IDs</li>
+</ul>
+<h2 id="additional-information">Additional Information</h2>
+<p>This package is built on top of Liquid AI's official LEAP SDK. For more information about LEAP SDK and Liquid AI, visit <a href="https://leap.liquid.ai">leap.liquid.ai</a>.</p>
+<h3 id="ios-implementation-status">iOS Implementation Status</h3>
+<p>⚠️ <strong>Important</strong>: iOS support is implemented but <strong>not 100% tested</strong> in production environments.</p>
+<p><strong>What's implemented:</strong></p>
+<ul>
+<li>✅ Complete Flutter-iOS bridge</li>
+<li>✅ Native LEAP SDK integration (v0.4.0)</li>
+<li>✅ Model loading and management</li>
+<li>✅ Text generation (blocking and streaming)</li>
+<li>✅ CocoaPods integration with <code>Leap-SDK</code></li>
+<li>✅ iOS 15+ and Swift 5.9+ support</li>
+</ul>
+<p><strong>Testing status:</strong></p>
+<ul>
+<li>✅ Android: Extensively tested in production</li>
+<li>⚠️ iOS: Basic functionality verified, needs comprehensive testing</li>
+</ul>
+<p><strong>Requirements:</strong></p>
+<ul>
+<li>iOS 15.0 or later</li>
+<li>64-bit device (iPhone 6s and newer)</li>
+<li>Swift 5.9+</li>
+<li>CocoaPods for dependency management</li>
+</ul>
+<p>If you encounter iOS-specific issues, please <a href="https://github.com/hawier-dev/flutter_leap_sdk/issues">report them</a> with device/OS details.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="common-issues">Common Issues</h3>
+<p><strong>Model loading fails:</strong></p>
+<ul>
+<li>Ensure device has sufficient RAM (3GB+ recommended)</li>
+<li>Check model file integrity after download</li>
+<li>Verify device architecture (arm64-v8a for Android)</li>
+</ul>
+<p><strong>Download issues:</strong></p>
+<ul>
+<li>Check network connectivity</li>
+<li>Ensure sufficient storage space</li>
+<li>Try different model URLs if needed</li>
+</ul>
+<p><strong>iOS-specific issues:</strong></p>
+<ul>
+<li>Verify iOS version (15.0+)</li>
+<li>Check CocoaPods installation</li>
+<li>Report iOS bugs with device details</li>
+</ul>
+<h3 id="performance-tips">Performance Tips</h3>
+<ul>
+<li>Use smaller models (LFM2-350M) for basic tasks</li>
+<li>Monitor memory usage during model operations</li>
+<li>Unload models when not needed to free memory</li>
+<li>Use streaming for better user experience</li>
+</ul>
+<h2 id="contributing">Contributing</h2>
+<p>Contributions are welcome! Please feel free to submit Pull Requests or <a href="https://github.com/hawier-dev/flutter_leap_sdk/issues">file issues</a>.</p>
+<h2 id="license">License</h2>
+<p>This project is licensed under the MIT License - see the LICENSE file for details.</p>
+<h2 id="changelog">Changelog</h2>
+<p>See <a href="CHANGELOG.md">CHANGELOG.md</a> for version history and release notes.</p>
+</section>
+
+
+      <section class="summary">
+          <h2>Libraries</h2>
+        <dl>
+          <dt id="flutter_leap_sdk">
+  <span class="name"><a href="flutter_leap_sdk/">flutter_leap_sdk</a></span> 
+
+</dt>
+<dd>
+</dd>
+
+        </dl>
+      </section>
+  </div> <!-- /.main-content -->
+  <div id="dartdoc-sidebar-left" class="sidebar sidebar-offcanvas-left">
+    <!-- The search input and breadcrumbs below are only responsively visible at low resolutions. -->
+<header id="header-search-sidebar" class="hidden-l">
+  <form class="search-sidebar" role="search">
+    <input type="text" id="search-sidebar" autocomplete="off" disabled class="form-control typeahead" placeholder="Loading search...">
+  </form>
+</header>
+<ol class="breadcrumbs gt-separated dark hidden-l" id="sidebar-nav">
+    <li><a href="https://github.com/hawier-dev/flutter_leap_sdk">flutter_leap_sdk package</a></li>
+</ol>
+
+    <h5 class="hidden-xs"><span class="package-name">flutter_leap_sdk</span> <span class="package-kind">package</span></h5>
+    <ol>
+      <li class="section-title">Libraries</li>
+      <li><a href="flutter_leap_sdk/">flutter_leap_sdk</a></li>
+</ol>
+
+  </div>
+  <div id="dartdoc-sidebar-right" class="sidebar sidebar-offcanvas-right">
+  </div>
+</main>
+<footer>
+  <span class="no-break">
+    flutter_leap_sdk
+      0.1.0
+  </span>
+  
+</footer>
+
+
+<script src="static-assets/highlight.pack.js?v1"></script>
+<script src="static-assets/docs.dart.js"></script>
+
+</body>
+</html>
+
