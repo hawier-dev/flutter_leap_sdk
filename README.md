@@ -82,8 +82,8 @@ All models are downloaded from Hugging Face and cached locally:
 | **LFM2-350M** | 322 MB | Smallest model |
 | **LFM2-700M** | 610 MB | Balanced model |
 | **LFM2-1.2B** | 924 MB | Largest model |
-| **LFM2-VL-450M** | 398 MB | Small vision model |
-| **LFM2-VL-1.6B** | 1.6 GB | Vision model |
+| **LFM2-VL-450M** | 385 MB | Small vision model |
+| **LFM2-VL-1.6B** | 1.19 GB | Vision model |
 
 > **Note**: Models are automatically downloaded to the app's documents directory under `/leap/` folder.
 
