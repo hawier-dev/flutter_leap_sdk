@@ -518,13 +518,11 @@ class Conversation {
       final userMsg = ChatMessage.user(userMessage);
       addMessage(userMsg);
 
-      // Note: We're using the service-level method that bypasses conversation management
-      // because the native SDK conversation methods handle image content internally
-      final response = await FlutterLeapSdkService.generateResponseWithImage(
-        userMessage,
-        imageBytes,
-        systemPrompt: _systemPrompt,
-        generationOptions: _generationOptions,
+      // Use the conversation-aware method that maintains conversation state
+      final response = await FlutterLeapSdkService.generateConversationResponseWithImage(
+        conversationId: id,
+        message: userMessage,
+        imageBytes: imageBytes,
       );
 
       // Add assistant response to history

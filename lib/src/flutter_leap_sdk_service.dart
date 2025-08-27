@@ -721,6 +721,27 @@ class FlutterLeapSdkService {
     }
   }
   
+  /// Internal method for conversation response generation with image
+  static Future<String> generateConversationResponseWithImage({
+    required String conversationId,
+    required String message,
+    required Uint8List imageBytes,
+  }) async {
+    try {
+      final String imageBase64 = base64Encode(imageBytes);
+      final String result = await _channel.invokeMethod('generateConversationResponseWithImage', {
+        'conversationId': conversationId,
+        'message': message,
+        'imageBase64': imageBase64,
+      });
+      
+      return result;
+      
+    } on PlatformException catch (e) {
+      throw GenerationException('Failed to generate response with image: ${e.message}', e.code);
+    }
+  }
+  
   /// Internal method for conversation streaming response generation
   static Stream<String> generateConversationResponseStream({
     required String conversationId,

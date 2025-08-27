@@ -72,6 +72,10 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             handleUnregisterFunction(call: call, result: result)
         case "executeFunction":
             handleExecuteFunction(call: call, result: result)
+        case "generateResponseWithImage":
+            handleGenerateResponseWithImage(call: call, result: result)
+        case "generateConversationResponseWithImage":
+            handleGenerateConversationResponseWithImage(call: call, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -856,6 +860,177 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                         continuation.resume(returning: ["error": "Invalid response from Flutter"])
                     }
                 }
+            }
+        }
+    }
+    
+    // MARK: - Vision Model Support
+    
+    private func base64ToUIImage(_ base64String: String) -> UIImage? {
+        guard let data = Data(base64Encoded: base64String) else {
+            NSLog("❌ iOS DEBUG: Failed to decode base64 string to Data")
+            return nil
+        }
+        
+        let image = UIImage(data: data)
+        if image == nil {
+            NSLog("❌ iOS DEBUG: Failed to create UIImage from Data")
+        }
+        return image
+    }
+    
+    private func handleGenerateResponseWithImage(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let message = args["message"] as? String,
+              let imageBase64 = args["imageBase64"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "message and imageBase64 are required", details: nil))
+            return
+        }
+        
+        guard let runner = modelRunner else {
+            result(FlutterError(code: "MODEL_NOT_LOADED", message: "Model is not loaded", details: nil))
+            return
+        }
+        
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
+            return
+        }
+        
+        if imageBase64.isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Image data cannot be empty", details: nil))
+            return
+        }
+        
+        let systemPrompt = args["systemPrompt"] as? String ?? ""
+        
+        Task {
+            do {
+                // Convert base64 to UIImage
+                guard let uiImage = base64ToUIImage(imageBase64) else {
+                    await MainActor.run {
+                        result(FlutterError(code: "IMAGE_ERROR", message: "Failed to decode image", details: nil))
+                    }
+                    return
+                }
+                
+                // Create conversation with optional system prompt
+                let conversation = systemPrompt.isEmpty ? 
+                    Conversation(modelRunner: runner, history: []) :
+                    Conversation(modelRunner: runner, history: [ChatMessage(role: .system, content: [.text(systemPrompt)])])
+                
+                // Create image content using UIImage
+                let imageContent = try ChatMessageContent.fromUIImage(uiImage, compressionQuality: 0.85)
+                let textContent = ChatMessageContent.text(message)
+                
+                // Create ChatMessage with mixed content
+                let chatMessage = ChatMessage(role: .user, content: [textContent, imageContent])
+                
+                var fullResponse = ""
+                
+                // Generate response
+                for try await response in conversation.generateResponse(message: chatMessage) {
+                    switch response {
+                    case .chunk(let text):
+                        fullResponse += text
+                    case .reasoningChunk(let text):
+                        fullResponse += text
+                    case .functionCall(let calls):
+                        NSLog("✅ Flutter LEAP SDK iOS: Function calls received: \(calls.count)")
+                    case .complete(let fullText, let completeInfo):
+                        NSLog("✅ Flutter LEAP SDK iOS: Image generation completed - \(fullText.count) chars")
+                        break
+                    @unknown default:
+                        NSLog("⚠️ Unknown response type: \(response)")
+                    }
+                }
+                
+                await MainActor.run {
+                    result(fullResponse)
+                }
+                
+            } catch {
+                await MainActor.run {
+                    result(FlutterError(code: "GENERATION_ERROR", 
+                                      message: "Error generating response with image: \(error.localizedDescription)", 
+                                      details: nil))
+                }
+                NSLog("❌ Flutter LEAP SDK iOS: Image generation failed - \(error)")
+            }
+        }
+    }
+    
+    private func handleGenerateConversationResponseWithImage(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let conversationId = args["conversationId"] as? String,
+              let message = args["message"] as? String,
+              let imageBase64 = args["imageBase64"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId, message, and imageBase64 are required", details: nil))
+            return
+        }
+        
+        guard let conversation = conversations[conversationId] else {
+            result(FlutterError(code: "CONVERSATION_NOT_FOUND", message: "Conversation not found: \(conversationId)", details: nil))
+            return
+        }
+        
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
+            return
+        }
+        
+        if imageBase64.isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Image data cannot be empty", details: nil))
+            return
+        }
+        
+        Task {
+            do {
+                // Convert base64 to UIImage
+                guard let uiImage = base64ToUIImage(imageBase64) else {
+                    await MainActor.run {
+                        result(FlutterError(code: "IMAGE_ERROR", message: "Failed to decode image", details: nil))
+                    }
+                    return
+                }
+                
+                // Create image content using UIImage
+                let imageContent = try ChatMessageContent.fromUIImage(uiImage, compressionQuality: 0.85)
+                let textContent = ChatMessageContent.text(message)
+                
+                // Create ChatMessage with mixed content
+                let chatMessage = ChatMessage(role: .user, content: [textContent, imageContent])
+                
+                var fullResponse = ""
+                
+                // Generate response
+                for try await response in conversation.generateResponse(message: chatMessage) {
+                    switch response {
+                    case .chunk(let text):
+                        fullResponse += text
+                    case .reasoningChunk(let text):
+                        fullResponse += text
+                    case .functionCall(let calls):
+                        NSLog("✅ Flutter LEAP SDK iOS: Function calls received: \(calls.count)")
+                    case .complete(let fullText, let completeInfo):
+                        NSLog("✅ Flutter LEAP SDK iOS: Conversation image generation completed - \(fullText.count) chars")
+                        break
+                    @unknown default:
+                        NSLog("⚠️ Unknown response type: \(response)")
+                    }
+                }
+                
+                await MainActor.run {
+                    result(fullResponse)
+                }
+                
+            } catch {
+                await MainActor.run {
+                    result(FlutterError(code: "GENERATION_ERROR", 
+                                      message: "Error generating conversation response with image: \(error.localizedDescription)", 
+                                      details: nil))
+                }
+                NSLog("❌ Flutter LEAP SDK iOS: Conversation image generation failed - \(error)")
             }
         }
     }
