@@ -42,7 +42,6 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
     
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         // Send debug info through Flutter channel instead of print
-        NSLog("🚨 iOS DEBUG: Method called: \(call.method)")
         switch call.method {
         case "loadModel":
             handleLoadModel(call: call, result: result)
@@ -72,6 +71,14 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             handleUnregisterFunction(call: call, result: result)
         case "executeFunction":
             handleExecuteFunction(call: call, result: result)
+        case "generateResponseWithImage":
+            handleGenerateResponseWithImage(call: call, result: result)
+        case "generateConversationResponseWithImage":
+            handleGenerateConversationResponseWithImage(call: call, result: result)
+        case "generateResponseWithImageStream":
+            handleGenerateResponseWithImageStream(call: call, result: result)
+        case "generateConversationResponseWithImageStream":
+            handleGenerateConversationResponseWithImageStream(call: call, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -100,14 +107,12 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                     result("Model loaded successfully")
                 }
                 
-                print("✅ Flutter LEAP SDK iOS: Model loaded successfully")
             } catch {
                 await MainActor.run {
                     result(FlutterError(code: "MODEL_LOADING_ERROR", 
                                       message: "Error loading model: \(error.localizedDescription)", 
                                       details: nil))
                 }
-                print("❌ Flutter LEAP SDK iOS: Model loading failed - \(error)")
             }
         }
     }
@@ -121,7 +126,6 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         conversationFunctions.removeAll()
         
         result("Model unloaded successfully")
-        print("✅ Flutter LEAP SDK iOS: Model unloaded successfully")
     }
     
     // MARK: - Generation Methods
@@ -164,13 +168,10 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                         case .reasoningChunk(let text):
                             fullResponse += text
                         case .functionCall(let calls):
-                            print("✅ Flutter LEAP SDK iOS: Function calls received: \(calls.count)")
                             // Function calls are handled separately in structured streaming
                         case .complete(let fullText, let completeInfo):
-                            print("✅ Flutter LEAP SDK iOS: Generation completed - \(fullText.count) chars")
                             break
                         @unknown default:
-                            print("⚠️ Unknown response type: \(response)")
                         }
                     }
                 } catch {
@@ -187,7 +188,6 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                                       message: "Error generating response: \(error.localizedDescription)", 
                                       details: nil))
                 }
-                print("❌ Flutter LEAP SDK iOS: Generation failed - \(error)")
             }
         }
     }
@@ -252,21 +252,16 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                                 }
                             }
                         case .functionCall(let calls):
-                            print("✅ Flutter LEAP SDK iOS: Function calls received: \(calls.count)")
                             // Function calls are handled separately in structured streaming
                         case .complete(let fullText, let completeInfo):
                             await MainActor.run {
                                 if let sink = self.eventSink {
-                                    NSLog("🚨 iOS DEBUG: Sending STREAM_END to EventSink")
                                     sink("<STREAM_END>")
                                 } else {
-                                    NSLog("❌ iOS DEBUG: EventSink is NIL when trying to send STREAM_END!")
                                 }
                             }
-                            print("✅ Flutter LEAP SDK iOS: Streaming completed - \(fullText.count) chars")
                             break
                         @unknown default:
-                            print("⚠️ Unknown response type: \(response)")
                         }
                     }
                 } catch {
@@ -280,7 +275,6 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                                                    message: "Error generating streaming response: \(error.localizedDescription)", 
                                                    details: nil))
                     }
-                    print("❌ Flutter LEAP SDK iOS: Streaming failed - \(error)")
                 }
             }
         }
@@ -292,7 +286,6 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         activeStreamingTask = nil
         
         result("Streaming cancelled")
-        print("✅ Flutter LEAP SDK iOS: Streaming cancelled")
     }
     
     private func handleGenerateResponseStructuredStream(call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -344,13 +337,10 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                         let responseMap = messageResponseToMap(response)
                         await MainActor.run {
                             if let sink = self.eventSink {
-                                NSLog("🚨 iOS DEBUG: Sending response to EventSink: \(responseMap)")
                                 sink(responseMap)
                             } else {
-                                NSLog("📦 iOS DEBUG: EventSink NIL - buffering data: \(responseMap)")
                                 self.streamDataLock.lock()
                                 self.pendingStreamData.append(responseMap)
-                                NSLog("📦 iOS DEBUG: Buffer size now: \(self.pendingStreamData.count)")
                                 self.streamDataLock.unlock()
                             }
                         }
@@ -359,10 +349,8 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                         if case .complete(_, _) = response {
                             await MainActor.run {
                                 if let sink = self.eventSink {
-                                    NSLog("🚨 iOS DEBUG: Sending STREAM_END to EventSink")
                                     sink("<STREAM_END>")
                                 } else {
-                                    NSLog("❌ iOS DEBUG: EventSink is NIL when trying to send STREAM_END!")
                                 }
                             }
                             break
@@ -379,7 +367,6 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                                                    message: "Error generating structured streaming response: \(error.localizedDescription)", 
                                                    details: nil))
                     }
-                    print("❌ Flutter LEAP SDK iOS: Structured streaming failed - \(error)")
                 }
             }
         }
@@ -420,7 +407,6 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         }
         
         result("Conversation created successfully")
-        print("✅ Flutter LEAP SDK iOS: Created conversation - \(conversationId)")
     }
     
     private func handleGenerateConversationResponse(call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -455,13 +441,10 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                         case .reasoningChunk(let text):
                             fullResponse += text
                         case .functionCall(let calls):
-                            print("✅ Flutter LEAP SDK iOS: Function calls received: \(calls.count)")
                             // Function calls are handled separately in structured streaming
                         case .complete(let fullText, let completeInfo):
-                            print("✅ Flutter LEAP SDK iOS: Conversation generation completed - \(fullText.count) chars")
                             break
                         @unknown default:
-                            print("⚠️ Unknown response type: \(response)")
                         }
                     }
                 } catch {
@@ -478,30 +461,22 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                                       message: "Error generating conversation response: \(error.localizedDescription)", 
                                       details: nil))
                 }
-                print("❌ Flutter LEAP SDK iOS: Conversation generation failed - \(error)")
             }
         }
     }
     
     private func handleGenerateConversationResponseStream(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        NSLog("🚨🚨🚨 iOS DEBUG: handleGenerateConversationResponseStream called! 🚨🚨🚨")
-        NSLog("🚨 iOS DEBUG: activeStreamingTask = \(activeStreamingTask != nil ? "NOT NIL" : "NIL")")
-        NSLog("🚨 iOS DEBUG: shouldCancelStreaming = \(shouldCancelStreaming)")
-        NSLog("🚨 iOS DEBUG: eventSink = \(eventSink != nil ? "VALID" : "NIL")")
         
         guard let args = call.arguments as? [String: Any],
               let conversationId = args["conversationId"] as? String,
               let message = args["message"] as? String else {
-            NSLog("🚨 iOS DEBUG: Invalid arguments!")
             result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId and message are required", details: nil))
             return
         }
-        NSLog("🚨 iOS DEBUG: Processing message: '\(message)' for conversation: \(conversationId)")
         
         // EventSink might not be available yet - will be set by onListen
         // Don't fail here, just log and continue
         if eventSink == nil {
-            NSLog("⚠️ iOS DEBUG: EventSink is NIL at start - waiting for onListen...")
         }
         
         guard let conversation = conversations[conversationId] else {
@@ -516,7 +491,6 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         
         // Cancel previous streaming and reset state for new message
         if activeStreamingTask != nil {
-            NSLog("🔍 iOS DEBUG: Cancelling previous streaming task")
             shouldCancelStreaming = true
             activeStreamingTask?.cancel()
             activeStreamingTask = nil
@@ -535,48 +509,37 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             }
             
             do {
-                print("🔍 iOS DEBUG: Starting conversation.generateResponse for: '\(message)'")
-                print("🔍 iOS DEBUG: Task.isCancelled = \(Task.isCancelled), shouldCancelStreaming = \(shouldCancelStreaming)")
                 
                 // Generate streaming response
                 do {
                     var responseCount = 0
                     let userMessage = ChatMessage(role: .user, content: [.text(message)])
                     let responseStream = conversation.generateResponse(message: userMessage)
-                    print("🔍 iOS DEBUG: Created response stream successfully")
                     
                     for try await response in responseStream {
                         responseCount += 1
-                        print("🔍 iOS DEBUG: Received response #\(responseCount): \(response)")
                         
                         if shouldCancelStreaming || Task.isCancelled {
-                            print("🔍 iOS DEBUG: Breaking due to cancellation - shouldCancel: \(shouldCancelStreaming), isCancelled: \(Task.isCancelled)")
                             break
                         }
                         
                         let responseMap = messageResponseToMap(response)
                         await MainActor.run {
                             if let sink = self.eventSink {
-                                NSLog("🚨 iOS DEBUG: Sending response to EventSink: \(responseMap)")
                                 sink(responseMap)
                             } else {
-                                NSLog("📦 iOS DEBUG: EventSink NIL - buffering data: \(responseMap)")
                                 self.streamDataLock.lock()
                                 self.pendingStreamData.append(responseMap)
-                                NSLog("📦 iOS DEBUG: Buffer size now: \(self.pendingStreamData.count)")
                                 self.streamDataLock.unlock()
                             }
                         }
                         
                         // Send stream end for Complete responses
                         if case .complete(_, _) = response {
-                            print("🔍 iOS DEBUG: Received complete response, sending STREAM_END")
                             await MainActor.run {
                                 if let sink = self.eventSink {
-                                    NSLog("🚨 iOS DEBUG: Sending STREAM_END to EventSink")
                                     sink("<STREAM_END>")
                                 } else {
-                                    NSLog("❌ iOS DEBUG: EventSink is NIL when trying to send STREAM_END!")
                                 }
                             }
                             break
@@ -585,29 +548,23 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                     
                     // If we exit the loop without responses, that's the problem!
                     if responseCount == 0 {
-                        print("🚨 iOS DEBUG: NO RESPONSES RECEIVED! Sending STREAM_END anyway")
                         await MainActor.run {
                             self.eventSink?("<STREAM_END>")
                         }
                     } else {
-                        print("🔍 iOS DEBUG: Stream finished normally with \(responseCount) responses")
                     }
                 } catch {
-                    print("🔍 iOS DEBUG: Error in generateResponse: \(error)")
                     throw error
                 }
                 
             } catch {
                 if !(error is CancellationError) {
-                    print("🔍 iOS DEBUG: Exception in conversation streaming: \(error)")
                     await MainActor.run {
                         self.eventSink?(FlutterError(code: "STREAMING_ERROR", 
                                                    message: "Error generating conversation streaming response: \(error.localizedDescription)", 
                                                    details: nil))
                     }
-                    print("❌ Flutter LEAP SDK iOS: Conversation streaming failed - \(error)")
                 } else {
-                    print("🔍 iOS DEBUG: Task was cancelled")
                 }
             }
         }
@@ -625,7 +582,6 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         conversationFunctions.removeValue(forKey: conversationId)
         
         result("Conversation disposed successfully")
-        print("✅ Flutter LEAP SDK iOS: Disposed conversation - \(conversationId)")
     }
     
     // MARK: - Function Calling Support
@@ -660,13 +616,11 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
             conversation.registerFunction(leapFunction)
             
             result("Function registered successfully")
-            print("✅ Flutter LEAP SDK iOS: Registered function '\(functionName)' for conversation: \(conversationId)")
             
         } catch {
             result(FlutterError(code: "FUNCTION_REGISTRATION_ERROR", 
                               message: "Error registering function: \(error.localizedDescription)", 
                               details: nil))
-            print("❌ Flutter LEAP SDK iOS: Function registration failed - \(error)")
         }
     }
     
@@ -690,7 +644,6 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         // Functions are automatically unregistered when conversation is disposed
         
         result("Function unregistered successfully")
-        print("✅ Flutter LEAP SDK iOS: Unregistered function '\(functionName)' from conversation: \(conversationId)")
     }
     
     private func handleExecuteFunction(call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -860,13 +813,376 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
         }
     }
     
+    // MARK: - Vision Model Support
+    
+    private func base64ToUIImage(_ base64String: String) -> UIImage? {
+        guard let data = Data(base64Encoded: base64String) else {
+            return nil
+        }
+        
+        let image = UIImage(data: data)
+        if image == nil {
+        }
+        return image
+    }
+    
+    private func handleGenerateResponseWithImage(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let message = args["message"] as? String,
+              let imageBase64 = args["imageBase64"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "message and imageBase64 are required", details: nil))
+            return
+        }
+        
+        guard let runner = modelRunner else {
+            result(FlutterError(code: "MODEL_NOT_LOADED", message: "Model is not loaded", details: nil))
+            return
+        }
+        
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
+            return
+        }
+        
+        if imageBase64.isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Image data cannot be empty", details: nil))
+            return
+        }
+        
+        let systemPrompt = args["systemPrompt"] as? String ?? ""
+        
+        Task {
+            do {
+                // Convert base64 to UIImage
+                guard let uiImage = base64ToUIImage(imageBase64) else {
+                    await MainActor.run {
+                        result(FlutterError(code: "IMAGE_ERROR", message: "Failed to decode image", details: nil))
+                    }
+                    return
+                }
+                
+                // Create conversation with optional system prompt
+                let conversation = systemPrompt.isEmpty ? 
+                    Conversation(modelRunner: runner, history: []) :
+                    Conversation(modelRunner: runner, history: [ChatMessage(role: .system, content: [.text(systemPrompt)])])
+                
+                // Create image content using UIImage
+                let imageContent = try ChatMessageContent.fromUIImage(uiImage, compressionQuality: 0.85)
+                let textContent = ChatMessageContent.text(message)
+                
+                // Create ChatMessage with mixed content
+                let chatMessage = ChatMessage(role: .user, content: [textContent, imageContent])
+                
+                var fullResponse = ""
+                
+                // Generate response
+                for try await response in conversation.generateResponse(message: chatMessage) {
+                    switch response {
+                    case .chunk(let text):
+                        fullResponse += text
+                    case .reasoningChunk(let text):
+                        fullResponse += text
+                    case .functionCall(let calls):
+                    case .complete(let fullText, let completeInfo):
+                        break
+                    @unknown default:
+                    }
+                }
+                
+                await MainActor.run {
+                    result(fullResponse)
+                }
+                
+            } catch {
+                await MainActor.run {
+                    result(FlutterError(code: "GENERATION_ERROR", 
+                                      message: "Error generating response with image: \(error.localizedDescription)", 
+                                      details: nil))
+                }
+            }
+        }
+    }
+    
+    private func handleGenerateConversationResponseWithImage(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let conversationId = args["conversationId"] as? String,
+              let message = args["message"] as? String,
+              let imageBase64 = args["imageBase64"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId, message, and imageBase64 are required", details: nil))
+            return
+        }
+        
+        guard let conversation = conversations[conversationId] else {
+            result(FlutterError(code: "CONVERSATION_NOT_FOUND", message: "Conversation not found: \(conversationId)", details: nil))
+            return
+        }
+        
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
+            return
+        }
+        
+        if imageBase64.isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Image data cannot be empty", details: nil))
+            return
+        }
+        
+        Task {
+            do {
+                // Convert base64 to UIImage
+                guard let uiImage = base64ToUIImage(imageBase64) else {
+                    await MainActor.run {
+                        result(FlutterError(code: "IMAGE_ERROR", message: "Failed to decode image", details: nil))
+                    }
+                    return
+                }
+                
+                // Create image content using UIImage
+                let imageContent = try ChatMessageContent.fromUIImage(uiImage, compressionQuality: 0.85)
+                let textContent = ChatMessageContent.text(message)
+                
+                // Create ChatMessage with mixed content
+                let chatMessage = ChatMessage(role: .user, content: [textContent, imageContent])
+                
+                var fullResponse = ""
+                
+                // Generate response
+                for try await response in conversation.generateResponse(message: chatMessage) {
+                    switch response {
+                    case .chunk(let text):
+                        fullResponse += text
+                    case .reasoningChunk(let text):
+                        fullResponse += text
+                    case .functionCall(let calls):
+                    case .complete(let fullText, let completeInfo):
+                        break
+                    @unknown default:
+                    }
+                }
+                
+                await MainActor.run {
+                    result(fullResponse)
+                }
+                
+            } catch {
+                await MainActor.run {
+                    result(FlutterError(code: "GENERATION_ERROR", 
+                                      message: "Error generating conversation response with image: \(error.localizedDescription)", 
+                                      details: nil))
+                }
+            }
+        }
+    }
+    
+    private func handleGenerateResponseWithImageStream(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let message = args["message"] as? String,
+              let imageBase64 = args["imageBase64"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "message and imageBase64 are required", details: nil))
+            return
+        }
+        
+        guard let runner = modelRunner else {
+            result(FlutterError(code: "MODEL_NOT_LOADED", message: "Model is not loaded", details: nil))
+            return
+        }
+        
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
+            return
+        }
+        
+        if imageBase64.isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Image data cannot be empty", details: nil))
+            return
+        }
+        
+        let systemPrompt = args["systemPrompt"] as? String ?? ""
+        
+        // Cancel any active streaming
+        activeStreamingTask?.cancel()
+        shouldCancelStreaming = false
+        
+        result("Streaming started")
+        
+        activeStreamingTask = Task {
+            // Ensure cleanup happens like Android's finally block
+            defer {
+                self.activeStreamingTask = nil
+                self.shouldCancelStreaming = false
+            }
+            
+            do {
+                // Convert base64 to UIImage
+                guard let uiImage = base64ToUIImage(imageBase64) else {
+                    await MainActor.run {
+                        self.eventSink?(FlutterError(code: "IMAGE_ERROR", message: "Failed to decode image", details: nil))
+                    }
+                    return
+                }
+                
+                // Create conversation with optional system prompt
+                let conversation = systemPrompt.isEmpty ? 
+                    Conversation(modelRunner: runner, history: []) :
+                    Conversation(modelRunner: runner, history: [ChatMessage(role: .system, content: [.text(systemPrompt)])])
+                
+                // Create image content using UIImage
+                let imageContent = try ChatMessageContent.fromUIImage(uiImage, compressionQuality: 0.85)
+                let textContent = ChatMessageContent.text(message)
+                
+                // Create ChatMessage with mixed content
+                let chatMessage = ChatMessage(role: .user, content: [textContent, imageContent])
+                
+                // Generate streaming response
+                for try await response in conversation.generateResponse(message: chatMessage) {
+                    // Reduced logging - only log important responses
+                    if case .complete(_, _) = response {
+                    }
+                    if shouldCancelStreaming || Task.isCancelled {
+                        break
+                    }
+                    
+                    switch response {
+                    case .chunk(let text):
+                        if !text.isEmpty {
+                            await MainActor.run {
+                                self.eventSink?(text)
+                            }
+                        }
+                    case .reasoningChunk(let text):
+                        if !text.isEmpty {
+                            await MainActor.run {
+                                self.eventSink?(text)
+                            }
+                        }
+                    case .functionCall(let calls):
+                    case .complete(let fullText, let completeInfo):
+                        await MainActor.run {
+                            if let sink = self.eventSink {
+                                sink("<STREAM_END>")
+                            } else {
+                            }
+                        }
+                        break
+                    @unknown default:
+                    }
+                }
+                
+            } catch {
+                if !(error is CancellationError) {
+                    await MainActor.run {
+                        self.eventSink?(FlutterError(code: "STREAMING_ERROR", 
+                                                   message: "Error generating streaming response with image: \(error.localizedDescription)", 
+                                                   details: nil))
+                    }
+                }
+            }
+        }
+    }
+    
+    private func handleGenerateConversationResponseWithImageStream(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let conversationId = args["conversationId"] as? String,
+              let message = args["message"] as? String,
+              let imageBase64 = args["imageBase64"] as? String else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "conversationId, message, and imageBase64 are required", details: nil))
+            return
+        }
+        
+        guard let conversation = conversations[conversationId] else {
+            result(FlutterError(code: "CONVERSATION_NOT_FOUND", message: "Conversation not found: \(conversationId)", details: nil))
+            return
+        }
+        
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Message cannot be empty", details: nil))
+            return
+        }
+        
+        if imageBase64.isEmpty {
+            result(FlutterError(code: "INVALID_INPUT", message: "Image data cannot be empty", details: nil))
+            return
+        }
+        
+        // Cancel any active streaming
+        activeStreamingTask?.cancel()
+        shouldCancelStreaming = false
+        
+        result("Streaming started")
+        
+        activeStreamingTask = Task {
+            // Ensure cleanup happens like Android's finally block
+            defer {
+                self.activeStreamingTask = nil
+                self.shouldCancelStreaming = false
+            }
+            
+            do {
+                // Convert base64 to UIImage
+                guard let uiImage = base64ToUIImage(imageBase64) else {
+                    await MainActor.run {
+                        self.eventSink?(FlutterError(code: "IMAGE_ERROR", message: "Failed to decode image", details: nil))
+                    }
+                    return
+                }
+                
+                // Create image content using UIImage
+                let imageContent = try ChatMessageContent.fromUIImage(uiImage, compressionQuality: 0.85)
+                let textContent = ChatMessageContent.text(message)
+                
+                // Create ChatMessage with mixed content
+                let chatMessage = ChatMessage(role: .user, content: [textContent, imageContent])
+                
+                // Generate streaming response
+                for try await response in conversation.generateResponse(message: chatMessage) {
+                    if shouldCancelStreaming || Task.isCancelled {
+                        break
+                    }
+                    
+                    switch response {
+                    case .chunk(let text):
+                        if !text.isEmpty {
+                            await MainActor.run {
+                                self.eventSink?(text)
+                            }
+                        }
+                    case .reasoningChunk(let text):
+                        if !text.isEmpty {
+                            await MainActor.run {
+                                self.eventSink?(text)
+                            }
+                        }
+                    case .functionCall(let calls):
+                    case .complete(let fullText, let completeInfo):
+                        await MainActor.run {
+                            if let sink = self.eventSink {
+                                sink("<STREAM_END>")
+                            } else {
+                            }
+                        }
+                        break
+                    @unknown default:
+                    }
+                }
+                
+            } catch {
+                if !(error is CancellationError) {
+                    await MainActor.run {
+                        self.eventSink?(FlutterError(code: "STREAMING_ERROR", 
+                                                   message: "Error generating conversation streaming response with image: \(error.localizedDescription)", 
+                                                   details: nil))
+                    }
+                }
+            }
+        }
+    }
+    
 }
 
 // MARK: - FlutterStreamHandler
 
 extension FlutterLeapSdkPlugin: FlutterStreamHandler {
     public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
-        NSLog("🚨 iOS DEBUG: EventChannel onListen called - EventSink assigned")
         self.eventSink = events
         
         // Reset cancellation flag - new stream starting
@@ -875,7 +1191,6 @@ extension FlutterLeapSdkPlugin: FlutterStreamHandler {
         // Flush any pending buffered data
         streamDataLock.lock()
         if !pendingStreamData.isEmpty {
-            NSLog("📦 iOS DEBUG: Flushing \(pendingStreamData.count) pending data items to EventSink")
             for data in pendingStreamData {
                 events(data)
             }
@@ -887,13 +1202,11 @@ extension FlutterLeapSdkPlugin: FlutterStreamHandler {
     }
     
     public func onCancel(withArguments arguments: Any?) -> FlutterError? {
-        NSLog("🚨 iOS DEBUG: EventChannel onCancel called - EventSink cleared")
         self.eventSink = nil
         
         // Clear pending buffer data
         streamDataLock.lock()
         if !pendingStreamData.isEmpty {
-            NSLog("🗑️ iOS DEBUG: Clearing \(pendingStreamData.count) pending buffer items in onCancel")
             pendingStreamData.removeAll()
         }
         streamDataLock.unlock()

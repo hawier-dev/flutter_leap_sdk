@@ -518,13 +518,11 @@ class Conversation {
       final userMsg = ChatMessage.user(userMessage);
       addMessage(userMsg);
 
-      // Note: We're using the service-level method that bypasses conversation management
-      // because the native SDK conversation methods handle image content internally
-      final response = await FlutterLeapSdkService.generateResponseWithImage(
-        userMessage,
-        imageBytes,
-        systemPrompt: _systemPrompt,
-        generationOptions: _generationOptions,
+      // Use the conversation-aware method that maintains conversation state
+      final response = await FlutterLeapSdkService.generateConversationResponseWithImage(
+        conversationId: id,
+        message: userMessage,
+        imageBytes: imageBytes,
       );
 
       // Add assistant response to history
@@ -538,6 +536,59 @@ class Conversation {
     }
   }
 
+  /// Generate a streaming response with an image (for vision models)
+  /// 
+  /// Adds the user message and image to history and generates a streaming assistant response.
+  /// This method requires a vision-capable model to be loaded.
+  Stream<String> generateResponseWithImageStream(String userMessage, Uint8List imageBytes) async* {
+    if (userMessage.trim().isEmpty) {
+      throw GenerationException('Message cannot be empty', 'INVALID_INPUT');
+    }
+
+    if (imageBytes.isEmpty) {
+      throw GenerationException('Image data cannot be empty', 'INVALID_INPUT');
+    }
+
+    if (_isGenerating) {
+      throw GenerationException('Conversation is already generating a response', 'GENERATION_IN_PROGRESS');
+    }
+
+    _isGenerating = true;
+    
+    try {
+      // Add user message with image to history
+      final userMsg = ChatMessage.user(userMessage);
+      addMessage(userMsg);
+
+      String fullResponse = '';
+      bool hasReceivedAnyResponse = false;
+      
+      // Generate streaming response using the service
+      await for (final chunk in FlutterLeapSdkService.generateConversationResponseWithImageStream(
+        conversationId: id,
+        message: userMessage,
+        imageBytes: imageBytes,
+      )) {
+        hasReceivedAnyResponse = true;
+        fullResponse += chunk;
+        yield chunk;
+      }
+
+      // Add complete assistant response to history or handle unexpected termination
+      if (fullResponse.isNotEmpty) {
+        final assistantMsg = ChatMessage.assistant(fullResponse);
+        addMessage(assistantMsg);
+      } else if (!hasReceivedAnyResponse) {
+        // Stream ended without any response - likely stopped unexpectedly
+        final assistantMsg = ChatMessage.assistant('[Generation stopped unexpectedly]');
+        addMessage(assistantMsg);
+      }
+
+      
+    } finally {
+      _isGenerating = false;
+    }
+  }
 
   @override
   String toString() {

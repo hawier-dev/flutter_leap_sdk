@@ -152,6 +152,19 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         val imageBase64 = call.argument<String>("imageBase64") ?: ""
         generateConversationResponseWithImage(conversationId, message, imageBase64, result)
       }
+      "generateResponseWithImageStream" -> {
+        val message = call.argument<String>("message") ?: ""
+        val systemPrompt = call.argument<String>("systemPrompt") ?: ""
+        val imageBase64 = call.argument<String>("imageBase64") ?: ""
+        val generationOptions = call.argument<Map<String, Any>>("generationOptions")
+        generateResponseWithImageStream(message, systemPrompt, imageBase64, generationOptions, result)
+      }
+      "generateConversationResponseWithImageStream" -> {
+        val conversationId = call.argument<String>("conversationId") ?: ""
+        val message = call.argument<String>("message") ?: ""
+        val imageBase64 = call.argument<String>("imageBase64") ?: ""
+        generateConversationResponseWithImageStream(conversationId, message, imageBase64, result)
+      }
       else -> {
         result.notImplemented()
       }
@@ -601,7 +614,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         conversation.generateResponse(message, nativeOptions)
           .onEach { response ->
             if (shouldCancelStreaming) {
-              Log.d("FlutterLeapSDK", "Generation cancelled by flag")
               return@onEach
             }
             
@@ -1005,7 +1017,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
           }
         } catch (e: Exception) {
           withContext(Dispatchers.Main) {
-            Log.e("FlutterLeapSDK", "Error executing function: ${e.message}")
             result.error("FUNCTION_EXECUTION_ERROR", "Error executing function: ${e.message}", null)
           }
         }
@@ -1053,7 +1064,6 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       val inputStream = ByteArrayInputStream(decodedBytes)
       BitmapFactory.decodeStream(inputStream)
     } catch (e: Exception) {
-      Log.e("FlutterLeapSDK", "Error converting base64 to bitmap: ${e.message}")
       null
     }
   }
@@ -1212,6 +1222,203 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       } catch (e: Exception) {
         withContext(Dispatchers.Main) {
           result.error("GENERATION_ERROR", "Error generating conversation response with image: ${e.message ?: "Unknown error"}", null)
+        }
+      }
+    }
+  }
+
+  private fun generateResponseWithImageStream(
+    message: String,
+    systemPrompt: String,
+    imageBase64: String,
+    generationOptions: Map<String, Any>?,
+    result: Result
+  ) {
+    val runner = modelRunner
+    if (runner == null) {
+      result.error("MODEL_NOT_LOADED", "Model is not loaded", null)
+      return
+    }
+
+    if (message.trim().isEmpty()) {
+      result.error("INVALID_INPUT", "Message cannot be empty", null)
+      return
+    }
+
+    if (imageBase64.isEmpty()) {
+      result.error("INVALID_INPUT", "Image data cannot be empty", null)
+      return
+    }
+
+    // Cancel any active streaming
+    activeStreamingJob?.cancel()
+    shouldCancelStreaming = false
+    
+    activeStreamingJob = mainScope.launch(Dispatchers.IO) {
+      try {
+        withContext(Dispatchers.Main) {
+          result.success("Streaming started")
+        }
+        
+        val bitmap = base64ToBitmap(imageBase64)
+        if (bitmap == null) {
+          withContext(Dispatchers.Main) {
+            streamingSink?.error("IMAGE_ERROR", "Failed to decode image", null)
+          }
+          return@launch
+        }
+
+        val conversation = runner.createConversation(systemPrompt)
+        val nativeOptions = createNativeGenerationOptions(generationOptions)
+
+        // Create image content
+        val imageContent = ChatMessageContent.Image.fromBitmap(bitmap, 85)
+        val textContent = ChatMessageContent.Text(message)
+        val messageContents = listOf(textContent, imageContent)
+        
+        // Create ChatMessage with mixed content
+        val chatMessage = ChatMessage(
+          role = Role.USER,
+          content = messageContents
+        )
+
+        conversation.generateResponse(chatMessage, nativeOptions)
+          .onEach { response ->
+            if (shouldCancelStreaming) return@onEach
+            
+            when (response) {
+              is MessageResponse.Chunk -> {
+                if (response.text.isNotEmpty()) {
+                  launch(Dispatchers.Main) {
+                    streamingSink?.success(response.text)
+                  }
+                }
+              }
+              is MessageResponse.ReasoningChunk -> {
+                if (response.reasoning.isNotEmpty()) {
+                  launch(Dispatchers.Main) {
+                    streamingSink?.success(response.reasoning)
+                  }
+                }
+              }
+              is MessageResponse.Complete -> {
+                launch(Dispatchers.Main) {
+                  streamingSink?.success("<STREAM_END>")
+                }
+              }
+              else -> {
+                // Handle other response types
+              }
+            }
+          }
+          .catch { exception ->
+            launch(Dispatchers.Main) {
+              streamingSink?.error("STREAMING_ERROR", "Error generating streaming response with image: ${exception.message ?: "Unknown error"}", null)
+            }
+          }
+          .collect { }
+
+      } catch (e: Exception) {
+        withContext(Dispatchers.Main) {
+          streamingSink?.error("STREAMING_ERROR", "Error generating streaming response with image: ${e.message ?: "Unknown error"}", null)
+        }
+      }
+    }
+  }
+
+  private fun generateConversationResponseWithImageStream(
+    conversationId: String,
+    message: String,
+    imageBase64: String,
+    result: Result
+  ) {
+    val nativeConversation = conversations[conversationId]
+    if (nativeConversation == null) {
+      result.error("CONVERSATION_NOT_FOUND", "Conversation not found: $conversationId", null)
+      return
+    }
+
+    if (message.trim().isEmpty()) {
+      result.error("INVALID_INPUT", "Message cannot be empty", null)
+      return
+    }
+
+    if (imageBase64.isEmpty()) {
+      result.error("INVALID_INPUT", "Image data cannot be empty", null)
+      return
+    }
+
+    // Cancel any active streaming
+    activeStreamingJob?.cancel()
+    shouldCancelStreaming = false
+    
+    activeStreamingJob = mainScope.launch(Dispatchers.IO) {
+      try {
+        withContext(Dispatchers.Main) {
+          result.success("Streaming started")
+        }
+        
+        val bitmap = base64ToBitmap(imageBase64)
+        if (bitmap == null) {
+          withContext(Dispatchers.Main) {
+            streamingSink?.error("IMAGE_ERROR", "Failed to decode image", null)
+          }
+          return@launch
+        }
+
+        // Create image content
+        val imageContent = ChatMessageContent.Image.fromBitmap(bitmap, 85)
+        val textContent = ChatMessageContent.Text(message)
+        val messageContents = listOf(textContent, imageContent)
+        
+        // Create ChatMessage with mixed content
+        val chatMessage = ChatMessage(
+          role = Role.USER,
+          content = messageContents
+        )
+
+        val generationOptions = conversationGenerationOptions[conversationId]
+        val nativeOptions = createNativeGenerationOptions(generationOptions)
+
+        nativeConversation.generateResponse(chatMessage, nativeOptions)
+          .onEach { response ->
+            if (shouldCancelStreaming) return@onEach
+            
+            when (response) {
+              is MessageResponse.Chunk -> {
+                if (response.text.isNotEmpty()) {
+                  launch(Dispatchers.Main) {
+                    streamingSink?.success(response.text)
+                  }
+                }
+              }
+              is MessageResponse.ReasoningChunk -> {
+                if (response.reasoning.isNotEmpty()) {
+                  launch(Dispatchers.Main) {
+                    streamingSink?.success(response.reasoning)
+                  }
+                }
+              }
+              is MessageResponse.Complete -> {
+                launch(Dispatchers.Main) {
+                  streamingSink?.success("<STREAM_END>")
+                }
+              }
+              else -> {
+                // Handle other response types
+              }
+            }
+          }
+          .catch { exception ->
+            launch(Dispatchers.Main) {
+              streamingSink?.error("STREAMING_ERROR", "Error generating conversation streaming response with image: ${exception.message ?: "Unknown error"}", null)
+            }
+          }
+          .collect { }
+
+      } catch (e: Exception) {
+        withContext(Dispatchers.Main) {
+          streamingSink?.error("STREAMING_ERROR", "Error generating conversation streaming response with image: ${e.message ?: "Unknown error"}", null)
         }
       }
     }

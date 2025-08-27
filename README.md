@@ -6,8 +6,8 @@ A Flutter plugin for integrating Liquid AI's LEAP SDK, enabling on-device deploy
 
 | Platform | Text Models | Vision Models | Notes |
 |----------|-------------|---------------|--------|
-| Android  | ✅ Fully Supported | ✅ Fully Supported | API 31+, arm64-v8a, extensively tested |
-| iOS      | ⚠️  Supported | ❌ Not Supported | iOS 15+, 64-bit architecture, **not 100% tested** |
+| Android  | ✅ Fully Supported | ✅ Fully Supported | API 31+, arm64-v8a |
+| iOS      | ✅ Fully Supported | ✅ Fully Supported | iOS 15+, 64-bit architecture |
 
 ## Features
 
@@ -19,7 +19,7 @@ A Flutter plugin for integrating Liquid AI's LEAP SDK, enabling on-device deploy
 - ✅ **Error Handling**: Comprehensive exception system with detailed error codes
 - ✅ **Memory Management**: Efficient model lifecycle with cleanup
 - ✅ **Built on Official LEAP SDK**: Uses Liquid AI's native SDK (v0.5.0)
-- ✅ **Vision Models Support**: Process images with LFM2-VL models (Android only)
+- ✅ **Vision Models Support**: Process images with LFM2-VL models
 - ✅ **Secure Logging**: Production-safe logging system with sensitive data protection
 
 ## Getting Started
@@ -37,7 +37,7 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flutter_leap_sdk: ^0.2.1
+  flutter_leap_sdk: ^0.2.2
 ```
 
 ## Usage
@@ -82,7 +82,7 @@ All models are downloaded from Hugging Face and cached locally:
 | **LFM2-350M** | 322 MB | Smallest model | Basic chat, simple tasks, testing |
 | **LFM2-700M** | 610 MB | Balanced model | General purpose, good performance/size ratio |
 | **LFM2-1.2B** | 924 MB | Largest model | Best quality, complex reasoning tasks |
-| **LFM2-VL-1.6B** | 1.6 GB | Vision model | Image analysis, visual question answering (Android only) |
+| **LFM2-VL-1.6B** | 1.6 GB | Vision model | Image analysis, visual question answering |
 
 > **Note**: Models are automatically downloaded to the app's documents directory under `/leap/` folder.
 
@@ -190,7 +190,7 @@ conversation.generateResponseStream('What are futures?').listen(
 print('History: ${conversation.history.length} messages');
 ```
 
-### Vision Models (Android Only)
+### Vision Models
 
 Work with images using LFM2-VL vision models:
 
@@ -219,7 +219,6 @@ String response = await visionChat.generateResponseWithImage(
 print('Vision response: $response');
 ```
 
-> **⚠️ Platform Note**: Vision models are currently supported only on **Android**. iOS support for vision models is planned for future releases.
 
 ### Error Handling
 
@@ -251,7 +250,7 @@ try {
 #### Text Generation
 - `generateResponse(String message, {String? systemPrompt, GenerationOptions? options})` - Generate complete response
 - `generateResponseStream(String message, {String? systemPrompt, GenerationOptions? options})` - Streaming generation
-- `generateResponseWithImage(String message, Uint8List imageBytes, {String? systemPrompt, GenerationOptions? options})` - Generate response with image (Android only)
+- `generateResponseWithImage(String message, Uint8List imageBytes, {String? systemPrompt, GenerationOptions? options})` - Generate response with image
 - `cancelStreaming()` - Cancel active streaming
 
 #### Conversation Management
@@ -268,33 +267,6 @@ try {
 
 This package is built on top of Liquid AI's official LEAP SDK. For more information about LEAP SDK and Liquid AI, visit [leap.liquid.ai](https://leap.liquid.ai).
 
-### iOS Implementation Status
-
-⚠️ **Important**: iOS support is implemented but **not 100% tested** in production environments.
-
-**What's implemented:**
-- ✅ Complete Flutter-iOS bridge
-- ✅ Native LEAP SDK integration (v0.5.0)
-- ✅ Model loading and management
-- ✅ Text generation (blocking and streaming)
-- ✅ CocoaPods integration with `Leap-SDK`
-- ✅ iOS 15+ and Swift 5.9+ support
-
-**What's NOT implemented on iOS:**
-- ❌ Vision models (LFM2-VL) - Android only
-- ❌ Image processing with `generateResponseWithImage`
-
-**Testing status:**
-- ✅ Android: Extensively tested in production
-- ⚠️ iOS: Basic functionality verified, needs comprehensive testing
-
-**Requirements:**
-- iOS 15.0 or later
-- 64-bit device (iPhone 6s and newer)
-- Swift 5.9+
-- CocoaPods for dependency management
-
-If you encounter iOS-specific issues, please [report them](https://github.com/hawier-dev/flutter_leap_sdk/issues) with device/OS details.
 
 ## Contributing
 

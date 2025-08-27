@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'flutter_leap_sdk'
-  s.version          = '0.1.1'
+  s.version          = '0.2.2'
   s.summary          = 'Flutter package for Liquid AI\'s LEAP SDK - Deploy small language models on mobile devices'
   s.description      = <<-DESC
   A Flutter plugin for integrating Liquid AI's LEAP SDK, enabling on-device deployment of small language models in Flutter applications.
