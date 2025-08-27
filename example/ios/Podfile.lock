@@ -1,9 +1,9 @@
 PODS:
   - Flutter (1.0.0)
-  - flutter_leap_sdk (0.1.0):
+  - flutter_leap_sdk (0.2.2):
     - Flutter
-    - Leap-SDK (~> 0.4.0)
-  - Leap-SDK (0.4.0)
+    - Leap-SDK (~> 0.5.0)
+  - Leap-SDK (0.5.0)
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
@@ -21,8 +21,8 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
-  flutter_leap_sdk: aa0409027dd4457b3f87cd2da1517da06d947d8c
-  Leap-SDK: 1ebc742466d98fdb7d5248a07216cbab66371853
+  flutter_leap_sdk: acaf1e0e18eef6480a08c3ee804854967dbb509b
+  Leap-SDK: 470d52faeb48a3aa29d1f619ab7aa51850bd5203
 
 PODFILE CHECKSUM: 53a6aebc29ccee84c41f92f409fc20cd4ca011f1
 
