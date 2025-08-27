@@ -50,7 +50,8 @@
 <thead>
 <tr>
 <th>Platform</th>
-<th>Status</th>
+<th>Text Models</th>
+<th>Vision Models</th>
 <th>Notes</th>
 </tr>
 </thead>
@@ -58,11 +59,13 @@
 <tr>
 <td>Android</td>
 <td>✅ Fully Supported</td>
+<td>✅ Fully Supported</td>
 <td>API 31+, arm64-v8a, extensively tested</td>
 </tr>
 <tr>
 <td>iOS</td>
 <td>⚠️  Supported</td>
+<td>❌ Not Supported</td>
 <td>iOS 15+, 64-bit architecture, <strong>not 100% tested</strong></td>
 </tr>
 </tbody>
@@ -76,7 +79,8 @@
 <li>✅ <strong>Function Calling</strong>: Register and execute custom functions (experimental)</li>
 <li>✅ <strong>Error Handling</strong>: Comprehensive exception system with detailed error codes</li>
 <li>✅ <strong>Memory Management</strong>: Efficient model lifecycle with cleanup</li>
-<li>✅ <strong>Built on Official LEAP SDK</strong>: Uses Liquid AI's native SDK (v0.4.0)</li>
+<li>✅ <strong>Built on Official LEAP SDK</strong>: Uses Liquid AI's native SDK (v0.5.0)</li>
+<li>✅ <strong>Vision Models Support</strong>: Process images with LFM2-VL models (Android only)</li>
 <li>✅ <strong>Secure Logging</strong>: Production-safe logging system with sensitive data protection</li>
 </ul>
 <h2 id="getting-started">Getting Started</h2>
@@ -90,7 +94,7 @@
 <h3 id="installation">Installation</h3>
 <p>Add this to your <code>pubspec.yaml</code>:</p>
 <pre class="language-yaml"><code class="language-yaml">dependencies:
-  flutter_leap_sdk: ^0.1.0
+  flutter_leap_sdk: ^0.2.0
 </code></pre>
 <h2 id="usage">Usage</h2>
 <h3 id="basic-usage">Basic Usage</h3>
@@ -150,6 +154,12 @@ FlutterLeapSdkService.generateResponseStream('Hello, AI!').listen(
 <td>924 MB</td>
 <td>Largest model</td>
 <td>Best quality, complex reasoning tasks</td>
+</tr>
+<tr>
+<td><strong>LFM2-VL-1.6B</strong></td>
+<td>1.6 GB</td>
+<td>Vision model</td>
+<td>Image analysis, visual question answering (Android only)</td>
 </tr>
 </tbody>
 </table>
@@ -253,6 +263,34 @@ conversation.generateResponseStream('What are futures?').listen(
 // Conversation automatically maintains history
 print('History: ${conversation.history.length} messages');
 </code></pre>
+<h3 id="vision-models-android-only">Vision Models (Android Only)</h3>
+<p>Work with images using LFM2-VL vision models:</p>
+<pre class="language-dart"><code class="language-dart">// Load a vision model
+await FlutterLeapSdkService.loadModel(
+  modelPath: 'LFM2-VL-1.6B (Vision)',
+);
+
+// Create conversation for vision tasks
+Conversation visionChat = await FlutterLeapSdkService.createConversation(
+  systemPrompt: 'You are a helpful AI that can see and analyze images.',
+);
+
+// Analyze an image
+import 'dart:io';
+import 'dart:typed_data';
+
+File imageFile = File('/path/to/image.jpg');
+Uint8List imageBytes = await imageFile.readAsBytes();
+
+String response = await visionChat.generateResponseWithImage(
+  'What do you see in this image?',
+  imageBytes,
+);
+print('Vision response: $response');
+</code></pre>
+<blockquote>
+<p><strong>⚠️ Platform Note</strong>: Vision models are currently supported only on <strong>Android</strong>. iOS support for vision models is planned for future releases.</p>
+</blockquote>
 <h3 id="error-handling">Error Handling</h3>
 <pre class="language-dart"><code class="language-dart">try {
   await FlutterLeapSdkService.loadModel(modelPath: 'nonexistent-model');
@@ -280,6 +318,7 @@ print('History: ${conversation.history.length} messages');
 <ul>
 <li><code>generateResponse(String message, {String? systemPrompt, GenerationOptions? options})</code> - Generate complete response</li>
 <li><code>generateResponseStream(String message, {String? systemPrompt, GenerationOptions? options})</code> - Streaming generation</li>
+<li><code>generateResponseWithImage(String message, Uint8List imageBytes, {String? systemPrompt, GenerationOptions? options})</code> - Generate response with image (Android only)</li>
 <li><code>cancelStreaming()</code> - Cancel active streaming</li>
 </ul>
 <h4 id="conversation-management-2">Conversation Management</h4>
@@ -301,11 +340,16 @@ print('History: ${conversation.history.length} messages');
 <p><strong>What's implemented:</strong></p>
 <ul>
 <li>✅ Complete Flutter-iOS bridge</li>
-<li>✅ Native LEAP SDK integration (v0.4.0)</li>
+<li>✅ Native LEAP SDK integration (v0.5.0)</li>
 <li>✅ Model loading and management</li>
 <li>✅ Text generation (blocking and streaming)</li>
 <li>✅ CocoaPods integration with <code>Leap-SDK</code></li>
 <li>✅ iOS 15+ and Swift 5.9+ support</li>
+</ul>
+<p><strong>What's NOT implemented on iOS:</strong></p>
+<ul>
+<li>❌ Vision models (LFM2-VL) - Android only</li>
+<li>❌ Image processing with <code>generateResponseWithImage</code></li>
 </ul>
 <p><strong>Testing status:</strong></p>
 <ul>
@@ -393,7 +437,7 @@ print('History: ${conversation.history.length} messages');
 <footer>
   <span class="no-break">
     flutter_leap_sdk
-      0.1.0
+      0.2.0
   </span>
   
 </footer>
