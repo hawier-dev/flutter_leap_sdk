@@ -329,8 +329,3 @@ Contributions are welcome! Please feel free to submit Pull Requests or [file iss
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for version history and release notes.
-
