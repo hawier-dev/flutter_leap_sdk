@@ -535,13 +535,8 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
         _currentResponse = '';
       });
       
-      // Use streaming response with image
-      await for (final chunk in FlutterLeapSdkService.generateResponseWithImageStream(
-        userMessage,
-        imageBytes,
-        systemPrompt: _conversation!.systemPrompt,
-        generationOptions: _conversation!.generationOptions,
-      )) {
+      // Use streaming response with image from conversation
+      await for (final chunk in _conversation!.generateResponseWithImageStream(userMessage, imageBytes)) {
         if (mounted) {
           setState(() {
             _currentResponse += chunk;
