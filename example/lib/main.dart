@@ -32,29 +32,43 @@ class MainTabScreen extends StatefulWidget {
 }
 
 class _MainTabScreenState extends State<MainTabScreen> {
+  int _currentIndex = 0;
+
+  final List<Widget> _screens = [
+    const RegularChatScreen(),
+    const TextChatScreen(),
+    const VisionChatScreen(),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('LEAP SDK Demo'),
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-          bottom: const TabBar(
-            tabs: [
-              Tab(icon: Icon(Icons.chat), text: 'Regular Chat'),
-              Tab(icon: Icon(Icons.functions), text: 'Function Calling'),
-              Tab(icon: Icon(Icons.image), text: 'Vision Chat'),
-            ],
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('LEAP SDK Demo'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
+      body: _screens[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.chat),
+            label: 'Regular Chat',
           ),
-        ),
-        body: const TabBarView(
-          children: [
-            RegularChatScreen(),
-            TextChatScreen(),
-            VisionChatScreen(),
-          ],
-        ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.functions),
+            label: 'Function Calling',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.image),
+            label: 'Vision Chat',
+          ),
+        ],
       ),
     );
   }
