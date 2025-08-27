@@ -93,13 +93,11 @@ This method requires a vision-capable model to be loaded.</p>
     final userMsg = ChatMessage.user(userMessage);
     addMessage(userMsg);
 
-    &#47;&#47; Note: We&#39;re using the service-level method that bypasses conversation management
-    &#47;&#47; because the native SDK conversation methods handle image content internally
-    final response = await FlutterLeapSdkService.generateResponseWithImage(
-      userMessage,
-      imageBytes,
-      systemPrompt: _systemPrompt,
-      generationOptions: _generationOptions,
+    &#47;&#47; Use the conversation-aware method that maintains conversation state
+    final response = await FlutterLeapSdkService.generateConversationResponseWithImage(
+      conversationId: id,
+      message: userMessage,
+      imageBytes: imageBytes,
     );
 
     &#47;&#47; Add assistant response to history
@@ -139,7 +137,7 @@ This method requires a vision-capable model to be loaded.</p>
 <footer>
   <span class="no-break">
     flutter_leap_sdk
-      0.2.0
+      0.2.2
   </span>
   
 </footer>

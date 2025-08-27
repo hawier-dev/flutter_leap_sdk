@@ -73,7 +73,12 @@
     
 <section class="summary source-code" id="source">
   <h2><span>Implementation</span></h2>
-  <pre class="language-dart"><code class="language-dart">static void downloadProgress(String modelName, double progress, {int? bytesDownloaded, int? totalBytes}) {
+  <pre class="language-dart"><code class="language-dart">static void downloadProgress(
+  String modelName,
+  double progress, {
+  int? bytesDownloaded,
+  int? totalBytes,
+}) {
   if (!_shouldLog(LogLevel.info)) return;
 
   final progressPercent = (progress * 100).toStringAsFixed(1);
@@ -114,7 +119,7 @@
 <footer>
   <span class="no-break">
     flutter_leap_sdk
-      0.2.0
+      0.2.2
   </span>
   
 </footer>

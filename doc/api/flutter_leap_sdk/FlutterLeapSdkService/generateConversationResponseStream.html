@@ -106,7 +106,43 @@
             &#47;&#47; For now, skip reasoning chunks in simple streaming
             break;
           case &#39;functionCalls&#39;:
-            &#47;&#47; For now, skip function calls in simple streaming
+            &#47;&#47; Handle function calls - execute them and return results as text
+            final functionCallsList = (dataMap[&#39;functionCalls&#39;] as List?) ?? [];
+            final functionCalls = functionCallsList.map((call) =&gt;
+              Map&lt;String, dynamic&gt;.from(call as Map)
+            ).toList();
+            for (final call in functionCalls) {
+              final functionName = call[&#39;name&#39;] as String?;
+              final arguments = call[&#39;arguments&#39;] != null
+                  ? Map&lt;String, dynamic&gt;.from(call[&#39;arguments&#39;] as Map)
+                  : &lt;String, dynamic&gt;{};
+
+              if (functionName != null &amp;&amp; arguments != null) {
+                try {
+                  final result = await _channel.invokeMethod(&#39;executeFunction&#39;, {
+                    &#39;conversationId&#39;: conversationId,
+                    &#39;functionCall&#39;: {
+                      &#39;name&#39;: functionName,
+                      &#39;arguments&#39;: arguments,
+                    },
+                  });
+
+                  if (result is Map) {
+                    &#47;&#47; Convert to proper type and format function result as text
+                    final resultMap = Map&lt;String, dynamic&gt;.from(result);
+                    final location = resultMap[&#39;location&#39;] ?? &#39;Unknown&#39;;
+                    final temp = resultMap[&#39;temperature&#39;] ?? &#39;N&#47;A&#39;;
+                    final desc = resultMap[&#39;description&#39;] ?? &#39;N&#47;A&#39;;
+                    final resultText = &#39;🌤️ Weather in $location: $temp°C, $desc&#39;;
+                    yield resultText;
+                  } else {
+                    yield &#39;Function executed but result format unexpected: $result&#39;;
+                  }
+                } catch (e) {
+                  yield &#39;❌ Error executing $functionName: $e&#39;;
+                }
+              }
+            }
             break;
           case &#39;complete&#39;:
             &#47;&#47; Stream end
@@ -149,7 +185,7 @@
 <footer>
   <span class="no-break">
     flutter_leap_sdk
-      0.2.0
+      0.2.2
   </span>
   
 </footer>

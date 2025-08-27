@@ -384,6 +384,32 @@
 
 </dd>
 
+        <dt id="generateConversationResponseWithImage" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/FlutterLeapSdkService/generateConversationResponseWithImage.html">generateConversationResponseWithImage</a></span><span class="signature">(<wbr>{<span class="parameter" id="generateConversationResponseWithImage-param-conversationId"><span>required</span> <span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">conversationId</span>, </span><span class="parameter" id="generateConversationResponseWithImage-param-message"><span>required</span> <span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">message</span>, </span><span class="parameter" id="generateConversationResponseWithImage-param-imageBytes"><span>required</span> <span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-typed_data/Uint8List-class.html">Uint8List</a></span> <span class="parameter-name">imageBytes</span></span>})
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Future-class.html">Future</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Internal method for conversation response generation with image
+  
+
+</dd>
+
+        <dt id="generateConversationResponseWithImageStream" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/FlutterLeapSdkService/generateConversationResponseWithImageStream.html">generateConversationResponseWithImageStream</a></span><span class="signature">(<wbr>{<span class="parameter" id="generateConversationResponseWithImageStream-param-conversationId"><span>required</span> <span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">conversationId</span>, </span><span class="parameter" id="generateConversationResponseWithImageStream-param-message"><span>required</span> <span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">message</span>, </span><span class="parameter" id="generateConversationResponseWithImageStream-param-imageBytes"><span>required</span> <span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-typed_data/Uint8List-class.html">Uint8List</a></span> <span class="parameter-name">imageBytes</span></span>})
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Stream-class.html">Stream</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Internal method for conversation streaming response generation with image
+  
+
+</dd>
+
         <dt id="generateResponse" class="callable">
   <span class="name"><a href="../flutter_leap_sdk/FlutterLeapSdkService/generateResponse.html">generateResponse</a></span><span class="signature">(<wbr><span class="parameter" id="generateResponse-param-message"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">message</span>, {</span><span class="parameter" id="generateResponse-param-systemPrompt"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a>?</span> <span class="parameter-name">systemPrompt</span>, </span><span class="parameter" id="generateResponse-param-generationOptions"><span class="type-annotation"><a href="../flutter_leap_sdk/GenerationOptions-class.html">GenerationOptions</a>?</span> <span class="parameter-name">generationOptions</span></span>})
     <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Future-class.html">Future</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>&gt;</span></span>
@@ -419,6 +445,19 @@
 </dt>
 <dd>
   Generate a response with an image using the loaded vision model
+  
+
+</dd>
+
+        <dt id="generateResponseWithImageStream" class="callable">
+  <span class="name"><a href="../flutter_leap_sdk/FlutterLeapSdkService/generateResponseWithImageStream.html">generateResponseWithImageStream</a></span><span class="signature">(<wbr><span class="parameter" id="generateResponseWithImageStream-param-message"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span> <span class="parameter-name">message</span>, </span><span class="parameter" id="generateResponseWithImageStream-param-imageBytes"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-typed_data/Uint8List-class.html">Uint8List</a></span> <span class="parameter-name">imageBytes</span>, {</span><span class="parameter" id="generateResponseWithImageStream-param-systemPrompt"><span class="type-annotation"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a>?</span> <span class="parameter-name">systemPrompt</span>, </span><span class="parameter" id="generateResponseWithImageStream-param-generationOptions"><span class="type-annotation"><a href="../flutter_leap_sdk/GenerationOptions-class.html">GenerationOptions</a>?</span> <span class="parameter-name">generationOptions</span></span>})
+    <span class="returntype parameter">&#8594; <a href="https://api.flutter.dev/flutter/dart-core/Stream-class.html">Stream</a><span class="signature">&lt;<wbr><span class="type-parameter"><a href="https://api.flutter.dev/flutter/dart-core/String-class.html">String</a></span>&gt;</span></span>
+  </span>
+  
+
+</dt>
+<dd>
+  Generate a streaming response with an image using the loaded vision model
   
 
 </dd>
@@ -649,7 +688,7 @@
 <footer>
   <span class="no-break">
     flutter_leap_sdk
-      0.2.0
+      0.2.2
   </span>
   
 </footer>

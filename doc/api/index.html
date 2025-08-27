@@ -60,13 +60,13 @@
 <td>Android</td>
 <td>✅ Fully Supported</td>
 <td>✅ Fully Supported</td>
-<td>API 31+, arm64-v8a, extensively tested</td>
+<td>API 31+, arm64-v8a</td>
 </tr>
 <tr>
 <td>iOS</td>
-<td>⚠️  Supported</td>
-<td>❌ Not Supported</td>
-<td>iOS 15+, 64-bit architecture, <strong>not 100% tested</strong></td>
+<td>✅ Fully Supported</td>
+<td>✅ Fully Supported</td>
+<td>iOS 15+, 64-bit architecture</td>
 </tr>
 </tbody>
 </table>
@@ -80,7 +80,7 @@
 <li>✅ <strong>Error Handling</strong>: Comprehensive exception system with detailed error codes</li>
 <li>✅ <strong>Memory Management</strong>: Efficient model lifecycle with cleanup</li>
 <li>✅ <strong>Built on Official LEAP SDK</strong>: Uses Liquid AI's native SDK (v0.5.0)</li>
-<li>✅ <strong>Vision Models Support</strong>: Process images with LFM2-VL models (Android only)</li>
+<li>✅ <strong>Vision Models Support</strong>: Process images with LFM2-VL models</li>
 <li>✅ <strong>Secure Logging</strong>: Production-safe logging system with sensitive data protection</li>
 </ul>
 <h2 id="getting-started">Getting Started</h2>
@@ -94,7 +94,7 @@
 <h3 id="installation">Installation</h3>
 <p>Add this to your <code>pubspec.yaml</code>:</p>
 <pre class="language-yaml"><code class="language-yaml">dependencies:
-  flutter_leap_sdk: ^0.2.0
+  flutter_leap_sdk: ^0.2.2
 </code></pre>
 <h2 id="usage">Usage</h2>
 <h3 id="basic-usage">Basic Usage</h3>
@@ -133,7 +133,6 @@ FlutterLeapSdkService.generateResponseStream('Hello, AI!').listen(
 <th>Model</th>
 <th>Size</th>
 <th>Description</th>
-<th>Use Case</th>
 </tr>
 </thead>
 <tbody>
@@ -141,25 +140,26 @@ FlutterLeapSdkService.generateResponseStream('Hello, AI!').listen(
 <td><strong>LFM2-350M</strong></td>
 <td>322 MB</td>
 <td>Smallest model</td>
-<td>Basic chat, simple tasks, testing</td>
 </tr>
 <tr>
 <td><strong>LFM2-700M</strong></td>
 <td>610 MB</td>
 <td>Balanced model</td>
-<td>General purpose, good performance/size ratio</td>
 </tr>
 <tr>
 <td><strong>LFM2-1.2B</strong></td>
 <td>924 MB</td>
 <td>Largest model</td>
-<td>Best quality, complex reasoning tasks</td>
+</tr>
+<tr>
+<td><strong>LFM2-VL-450M</strong></td>
+<td>385 MB</td>
+<td>Small vision model</td>
 </tr>
 <tr>
 <td><strong>LFM2-VL-1.6B</strong></td>
-<td>1.6 GB</td>
+<td>1.19 GB</td>
 <td>Vision model</td>
-<td>Image analysis, visual question answering (Android only)</td>
 </tr>
 </tbody>
 </table>
@@ -263,7 +263,7 @@ conversation.generateResponseStream('What are futures?').listen(
 // Conversation automatically maintains history
 print('History: ${conversation.history.length} messages');
 </code></pre>
-<h3 id="vision-models-android-only">Vision Models (Android Only)</h3>
+<h3 id="vision-models">Vision Models</h3>
 <p>Work with images using LFM2-VL vision models:</p>
 <pre class="language-dart"><code class="language-dart">// Load a vision model
 await FlutterLeapSdkService.loadModel(
@@ -288,9 +288,6 @@ String response = await visionChat.generateResponseWithImage(
 );
 print('Vision response: $response');
 </code></pre>
-<blockquote>
-<p><strong>⚠️ Platform Note</strong>: Vision models are currently supported only on <strong>Android</strong>. iOS support for vision models is planned for future releases.</p>
-</blockquote>
 <h3 id="error-handling">Error Handling</h3>
 <pre class="language-dart"><code class="language-dart">try {
   await FlutterLeapSdkService.loadModel(modelPath: 'nonexistent-model');
@@ -318,7 +315,7 @@ print('Vision response: $response');
 <ul>
 <li><code>generateResponse(String message, {String? systemPrompt, GenerationOptions? options})</code> - Generate complete response</li>
 <li><code>generateResponseStream(String message, {String? systemPrompt, GenerationOptions? options})</code> - Streaming generation</li>
-<li><code>generateResponseWithImage(String message, Uint8List imageBytes, {String? systemPrompt, GenerationOptions? options})</code> - Generate response with image (Android only)</li>
+<li><code>generateResponseWithImage(String message, Uint8List imageBytes, {String? systemPrompt, GenerationOptions? options})</code> - Generate response with image</li>
 <li><code>cancelStreaming()</code> - Cancel active streaming</li>
 </ul>
 <h4 id="conversation-management-2">Conversation Management</h4>
@@ -335,68 +332,10 @@ print('Vision response: $response');
 </ul>
 <h2 id="additional-information">Additional Information</h2>
 <p>This package is built on top of Liquid AI's official LEAP SDK. For more information about LEAP SDK and Liquid AI, visit <a href="https://leap.liquid.ai">leap.liquid.ai</a>.</p>
-<h3 id="ios-implementation-status">iOS Implementation Status</h3>
-<p>⚠️ <strong>Important</strong>: iOS support is implemented but <strong>not 100% tested</strong> in production environments.</p>
-<p><strong>What's implemented:</strong></p>
-<ul>
-<li>✅ Complete Flutter-iOS bridge</li>
-<li>✅ Native LEAP SDK integration (v0.5.0)</li>
-<li>✅ Model loading and management</li>
-<li>✅ Text generation (blocking and streaming)</li>
-<li>✅ CocoaPods integration with <code>Leap-SDK</code></li>
-<li>✅ iOS 15+ and Swift 5.9+ support</li>
-</ul>
-<p><strong>What's NOT implemented on iOS:</strong></p>
-<ul>
-<li>❌ Vision models (LFM2-VL) - Android only</li>
-<li>❌ Image processing with <code>generateResponseWithImage</code></li>
-</ul>
-<p><strong>Testing status:</strong></p>
-<ul>
-<li>✅ Android: Extensively tested in production</li>
-<li>⚠️ iOS: Basic functionality verified, needs comprehensive testing</li>
-</ul>
-<p><strong>Requirements:</strong></p>
-<ul>
-<li>iOS 15.0 or later</li>
-<li>64-bit device (iPhone 6s and newer)</li>
-<li>Swift 5.9+</li>
-<li>CocoaPods for dependency management</li>
-</ul>
-<p>If you encounter iOS-specific issues, please <a href="https://github.com/hawier-dev/flutter_leap_sdk/issues">report them</a> with device/OS details.</p>
-<h2 id="troubleshooting">Troubleshooting</h2>
-<h3 id="common-issues">Common Issues</h3>
-<p><strong>Model loading fails:</strong></p>
-<ul>
-<li>Ensure device has sufficient RAM (3GB+ recommended)</li>
-<li>Check model file integrity after download</li>
-<li>Verify device architecture (arm64-v8a for Android)</li>
-</ul>
-<p><strong>Download issues:</strong></p>
-<ul>
-<li>Check network connectivity</li>
-<li>Ensure sufficient storage space</li>
-<li>Try different model URLs if needed</li>
-</ul>
-<p><strong>iOS-specific issues:</strong></p>
-<ul>
-<li>Verify iOS version (15.0+)</li>
-<li>Check CocoaPods installation</li>
-<li>Report iOS bugs with device details</li>
-</ul>
-<h3 id="performance-tips">Performance Tips</h3>
-<ul>
-<li>Use smaller models (LFM2-350M) for basic tasks</li>
-<li>Monitor memory usage during model operations</li>
-<li>Unload models when not needed to free memory</li>
-<li>Use streaming for better user experience</li>
-</ul>
 <h2 id="contributing">Contributing</h2>
 <p>Contributions are welcome! Please feel free to submit Pull Requests or <a href="https://github.com/hawier-dev/flutter_leap_sdk/issues">file issues</a>.</p>
 <h2 id="license">License</h2>
 <p>This project is licensed under the MIT License - see the LICENSE file for details.</p>
-<h2 id="changelog">Changelog</h2>
-<p>See <a href="CHANGELOG.md">CHANGELOG.md</a> for version history and release notes.</p>
 </section>
 
 
@@ -437,7 +376,7 @@ print('Vision response: $response');
 <footer>
   <span class="no-break">
     flutter_leap_sdk
-      0.2.0
+      0.2.2
   </span>
   
 </footer>

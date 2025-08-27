@@ -72,7 +72,11 @@
     
 <section class="summary source-code" id="source">
   <h2><span>Implementation</span></h2>
-  <pre class="language-dart"><code class="language-dart">static void critical(String message, [Object? error, StackTrace? stackTrace]) {
+  <pre class="language-dart"><code class="language-dart">static void critical(
+  String message, [
+  Object? error,
+  StackTrace? stackTrace,
+]) {
   _log(LogLevel.critical, message, error, stackTrace);
 }</code></pre>
 </section>
@@ -102,7 +106,7 @@
 <footer>
   <span class="no-break">
     flutter_leap_sdk
-      0.2.0
+      0.2.2
   </span>
   
 </footer>
