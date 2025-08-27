@@ -279,59 +279,43 @@ class _TextChatScreenState extends State<TextChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('LEAP SDK Demo'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
-      body: Column(
-        children: [
-          // Status section
+    return Column(
+      children: [
+        if (_conversation == null) 
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             color: Colors.grey.shade100,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text('Status: $_status', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                if (_isDownloading)
-                  Column(
-                    children: [
-                      LinearProgressIndicator(value: _downloadProgress),
-                      const SizedBox(height: 4),
-                      Text('Downloading: ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
-                    ],
-                  )
-                else if (_conversation == null) ...[
-                  Row(
-                    children: [
-                      ElevatedButton(
-                        onPressed: _downloadModel,
-                        child: const Text('Download Model'),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: _isLoading ? null : _loadModel,
-                        child: _isLoading 
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('Load Model'),
-                      ),
-                    ],
+                if (_isDownloading) ...[
+                  const CircularProgressIndicator(),
+                  const SizedBox(width: 16),
+                  Text('Downloading... ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
+                ] else ...[
+                  ElevatedButton(
+                    onPressed: _downloadModel,
+                    child: const Text('Download Model'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _loadModel,
+                    child: _isLoading 
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Load Model'),
                   ),
                 ],
               ],
             ),
           ),
-          
-          // Chat section
-          if (_conversation != null) ...[
-            // Messages
+        
+        // Chat section
+        if (_conversation != null) ...[
+          // Messages
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
@@ -400,9 +384,8 @@ class _TextChatScreenState extends State<TextChatScreen> {
                 ],
               ),
             ),
-          ],
         ],
-      ),
+      ],
     );
   }
 }
@@ -540,48 +523,37 @@ class _RegularChatScreenState extends State<RegularChatScreen> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Status section
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          color: Colors.grey.shade100,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Status: $_status', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              if (_isDownloading)
-                Column(
-                  children: [
-                    LinearProgressIndicator(value: _downloadProgress),
-                    const SizedBox(height: 4),
-                    Text('Downloading: ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
-                  ],
-                )
-              else if (_conversation == null) ...[
-                Row(
-                  children: [
-                    ElevatedButton(
-                      onPressed: _downloadModel,
-                      child: const Text('Download Model'),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: _isLoading ? null : _loadModel,
-                      child: _isLoading 
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Load Model'),
-                    ),
-                  ],
-                ),
+        if (_conversation == null) 
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            color: Colors.grey.shade100,
+            child: Row(
+              children: [
+                if (_isDownloading) ...[
+                  const CircularProgressIndicator(),
+                  const SizedBox(width: 16),
+                  Text('Downloading... ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
+                ] else ...[
+                  ElevatedButton(
+                    onPressed: _downloadModel,
+                    child: const Text('Download Model'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _loadModel,
+                    child: _isLoading 
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Load Model'),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
         
         // Chat section
         if (_conversation != null) ...[
@@ -831,20 +803,13 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           color: Colors.grey.shade100,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Text('Status: $_status', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              if (_isDownloading)
-                Column(
-                  children: [
-                    LinearProgressIndicator(value: _downloadProgress),
-                    const SizedBox(height: 4),
-                    Text('Downloading: ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
-                  ],
-                )
-              else if (_conversation == null) ...[
+              if (_isDownloading) ...[
+                const CircularProgressIndicator(),
+                const SizedBox(width: 16),
+                Text('Downloading... ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
+              ] else if (_conversation == null) ...[
                 Row(
                   children: [
                     ElevatedButton(
