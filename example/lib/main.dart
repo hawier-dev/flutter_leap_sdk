@@ -42,17 +42,17 @@ class _MainTabScreenState extends State<MainTabScreen> {
           backgroundColor: Theme.of(context).colorScheme.inversePrimary,
           bottom: const TabBar(
             tabs: [
+              Tab(icon: Icon(Icons.chat), text: 'Regular Chat'),
               Tab(icon: Icon(Icons.functions), text: 'Function Calling'),
               Tab(icon: Icon(Icons.image), text: 'Vision Chat'),
-              Tab(icon: Icon(Icons.chat), text: 'Regular Chat'),
             ],
           ),
         ),
         body: const TabBarView(
           children: [
+            RegularChatScreen(),
             TextChatScreen(),
             VisionChatScreen(),
-            RegularChatScreen(),
           ],
         ),
       ),
@@ -501,10 +501,16 @@ class _RegularChatScreenState extends State<RegularChatScreen> {
     });
 
     try {
-      final response = await _conversation!.generateResponse(userMessage);
-      setState(() {
-        _messages.add(ChatMessage.assistant(response));
-      });
+      String response = '';
+      await for (final chunk in _conversation!.generateResponseStream(userMessage)) {
+        response += chunk;
+        setState(() {
+          if (_messages.isEmpty || _messages.last.role != MessageRole.assistant) {
+            _messages.add(ChatMessage.assistant(''));
+          }
+          _messages[_messages.length - 1] = ChatMessage.assistant(response);
+        });
+      }
     } catch (e) {
       setState(() {
         _messages.add(ChatMessage.assistant('Error: $e'));
