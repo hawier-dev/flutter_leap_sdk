@@ -33,6 +33,7 @@ dependencies:
   flutter_leap_sdk:
     path: ../
   cupertino_icons: ^1.0.8
+  image_picker: ^1.2.0
 
 dev_dependencies:
   flutter_test:

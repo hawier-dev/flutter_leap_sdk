@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_leap_sdk/flutter_leap_sdk.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'dart:typed_data';
 
 void main() {
   runApp(const MyApp());
@@ -16,19 +19,53 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const DemoScreen(),
+      home: const MainTabScreen(),
     );
   }
 }
 
-class DemoScreen extends StatefulWidget {
-  const DemoScreen({super.key});
+class MainTabScreen extends StatefulWidget {
+  const MainTabScreen({super.key});
 
   @override
-  State<DemoScreen> createState() => _DemoScreenState();
+  State<MainTabScreen> createState() => _MainTabScreenState();
 }
 
-class _DemoScreenState extends State<DemoScreen> {
+class _MainTabScreenState extends State<MainTabScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('LEAP SDK Demo'),
+          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+          bottom: const TabBar(
+            tabs: [
+              Tab(icon: Icon(Icons.chat), text: 'Text Chat'),
+              Tab(icon: Icon(Icons.image), text: 'Vision Chat'),
+            ],
+          ),
+        ),
+        body: const TabBarView(
+          children: [
+            TextChatScreen(),
+            VisionChatScreen(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class TextChatScreen extends StatefulWidget {
+  const TextChatScreen({super.key});
+
+  @override
+  State<TextChatScreen> createState() => _TextChatScreenState();
+}
+
+class _TextChatScreenState extends State<TextChatScreen> {
   String _status = 'Initializing...';
   bool _isDownloading = false;
   bool _isLoading = false;
@@ -350,6 +387,326 @@ class _DemoScreenState extends State<DemoScreen> {
           ],
         ],
       ),
+    );
+  }
+}
+
+class VisionChatScreen extends StatefulWidget {
+  const VisionChatScreen({super.key});
+
+  @override
+  State<VisionChatScreen> createState() => _VisionChatScreenState();
+}
+
+class _VisionChatScreenState extends State<VisionChatScreen> {
+  String _status = 'Initializing...';
+  bool _isDownloading = false;
+  bool _isLoading = false;
+  double _downloadProgress = 0.0;
+  
+  Conversation? _conversation;
+  final List<ChatMessage> _messages = [];
+  final TextEditingController _messageController = TextEditingController();
+  bool _isGenerating = false;
+  
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    FlutterLeapSdkService.initialize();
+    _checkStatus();
+  }
+
+  Future<void> _checkStatus() async {
+    try {
+      final isLoaded = FlutterLeapSdkService.modelLoaded;
+      final currentModel = FlutterLeapSdkService.currentModel;
+      final isVisionModel = currentModel.contains('VL') || currentModel.contains('Vision');
+      
+      setState(() {
+        if (isLoaded && isVisionModel && _conversation != null) {
+          _status = '🖼️ Vision model ready! Select an image and ask about it.';
+        } else if (isLoaded && !isVisionModel) {
+          _status = '⚠️ Please load a vision model (LFM2-VL-1.6B) for image processing';
+        } else if (isLoaded) {
+          _status = '✅ Model ready - click Load to start vision chat';
+        } else {
+          _status = '⬇️ Need to download vision model';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _status = '❌ Error: $e';
+      });
+    }
+  }
+
+  Future<void> _downloadModel() async {
+    setState(() {
+      _isDownloading = true;
+      _downloadProgress = 0.0;
+    });
+
+    try {
+      await FlutterLeapSdkService.downloadModel(
+        modelName: 'LFM2-VL-1.6B (Vision)',
+        onProgress: (progress) {
+          setState(() {
+            _downloadProgress = progress.percentage / 100.0;
+            if (progress.isComplete) {
+              _isDownloading = false;
+              _status = '✅ Downloaded! Loading vision model...';
+              _loadModel();
+            }
+          });
+        },
+      );
+    } catch (e) {
+      setState(() {
+        _isDownloading = false;
+        _status = '❌ Download failed: $e';
+      });
+    }
+  }
+
+  Future<void> _loadModel() async {
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      await FlutterLeapSdkService.loadModel(modelPath: 'LFM2-VL-1.6B (Vision)');
+      
+      _conversation = await FlutterLeapSdkService.createConversation(
+        systemPrompt: 'You are a helpful AI assistant that can see and analyze images. Describe what you see in detail and answer questions about the images.',
+      );
+      
+      setState(() {
+        _isLoading = false;
+        _status = '🖼️ Vision model ready! Select an image and ask about it.';
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _status = '❌ Load failed: $e';
+      });
+    }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to pick image: $e')),
+      );
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    if (_messageController.text.trim().isEmpty || _conversation == null) return;
+    if (_selectedImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select an image first')),
+      );
+      return;
+    }
+
+    final userMessage = _messageController.text.trim();
+    _messageController.clear();
+
+    setState(() {
+      _messages.add(ChatMessage.user(userMessage));
+      _isGenerating = true;
+    });
+
+    try {
+      final imageBytes = await _selectedImage!.readAsBytes();
+      final response = await _conversation!.generateResponseWithImage(userMessage, imageBytes);
+      
+      setState(() {
+        _messages.add(ChatMessage.assistant(response));
+        _selectedImage = null; // Clear after use
+      });
+    } catch (e) {
+      setState(() {
+        _messages.add(ChatMessage.assistant('Error: $e'));
+      });
+    } finally {
+      setState(() {
+        _isGenerating = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Status section
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          color: Colors.grey.shade100,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Status: $_status', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              if (_isDownloading)
+                Column(
+                  children: [
+                    LinearProgressIndicator(value: _downloadProgress),
+                    const SizedBox(height: 4),
+                    Text('Downloading: ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
+                  ],
+                )
+              else if (_conversation == null) ...[
+                Row(
+                  children: [
+                    ElevatedButton(
+                      onPressed: _downloadModel,
+                      child: const Text('Download Vision Model'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _isLoading ? null : _loadModel,
+                      child: _isLoading 
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Load Vision Model'),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+        
+        // Chat section
+        if (_conversation != null) ...[
+          // Image selection
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            color: Colors.blue.shade50,
+            child: Column(
+              children: [
+                if (_selectedImage != null) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      _selectedImage!,
+                      height: 200,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Selected image: ${_selectedImage!.path.split('/').last}'),
+                  const SizedBox(height: 8),
+                ],
+                Row(
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _pickImage,
+                      icon: const Icon(Icons.photo_library),
+                      label: Text(_selectedImage == null ? 'Select Image' : 'Change Image'),
+                    ),
+                    if (_selectedImage != null) ...[
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () => setState(() => _selectedImage = null),
+                        child: const Text('Clear'),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          
+          // Messages
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                final message = _messages[index];
+                final isUser = message.role == MessageRole.user;
+                
+                return Container(
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isUser ? Colors.blue.shade100 : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isUser ? 'You' : 'Vision Assistant',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: isUser ? Colors.blue.shade800 : Colors.grey.shade800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(message.content),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          
+          // Input section
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Colors.grey.shade300)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _messageController,
+                    decoration: const InputDecoration(
+                      hintText: 'Ask about the image... (try: "What do you see in this image?")',
+                      border: OutlineInputBorder(),
+                    ),
+                    onSubmitted: (_) => _sendMessage(),
+                    enabled: !_isGenerating,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _isGenerating ? null : _sendMessage,
+                  child: _isGenerating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
