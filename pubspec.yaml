@@ -1,6 +1,6 @@
 name: flutter_leap_sdk
 description: "Flutter package for Liquid AI's LEAP SDK - Deploy small language models on mobile devices"
-version: 0.2.0
+version: 0.2.1
 homepage: https://github.com/hawier-dev/flutter_leap_sdk
 repository: https://github.com/hawier-dev/flutter_leap_sdk
 
