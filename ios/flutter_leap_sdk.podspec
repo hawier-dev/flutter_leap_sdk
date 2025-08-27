@@ -25,5 +25,5 @@ Pod::Spec.new do |s|
   s.swift_version = '5.9'
   
   # LEAP SDK dependency
-  s.dependency 'Leap-SDK', '~> 0.4.0'
+  s.dependency 'Leap-SDK', '~> 0.5.0'
 end

@@ -14,6 +14,11 @@ import ai.liquid.leap.Conversation
 import ai.liquid.leap.message.MessageResponse
 import ai.liquid.leap.message.ChatMessage
 import ai.liquid.leap.message.ChatMessageContent
+import ai.liquid.leap.message.ChatMessage.Role
+import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import java.io.ByteArrayInputStream
+import android.util.Base64
 import ai.liquid.leap.message.GenerationFinishReason
 import ai.liquid.leap.message.GenerationStats
 import ai.liquid.leap.function.LeapFunction
@@ -133,6 +138,19 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
         val conversationId = call.argument<String>("conversationId") ?: ""
         val functionCall = call.argument<Map<String, Any>>("functionCall") ?: mapOf()
         executeFunction(conversationId, functionCall, result)
+      }
+      "generateResponseWithImage" -> {
+        val message = call.argument<String>("message") ?: ""
+        val systemPrompt = call.argument<String>("systemPrompt") ?: ""
+        val imageBase64 = call.argument<String>("imageBase64") ?: ""
+        val generationOptions = call.argument<Map<String, Any>>("generationOptions")
+        generateResponseWithImage(message, systemPrompt, imageBase64, generationOptions, result)
+      }
+      "generateConversationResponseWithImage" -> {
+        val conversationId = call.argument<String>("conversationId") ?: ""
+        val message = call.argument<String>("message") ?: ""
+        val imageBase64 = call.argument<String>("imageBase64") ?: ""
+        generateConversationResponseWithImage(conversationId, message, imageBase64, result)
       }
       else -> {
         result.notImplemented()
@@ -447,7 +465,7 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
 
   private fun getLeapSDKVersion(): String {
     return try {
-      "0.4.0" // Current version being used
+      "0.5.0" // Current version being used
     } catch (e: Exception) {
       "unknown"
     }
@@ -1026,4 +1044,177 @@ class FlutterLeapSdkPlugin: FlutterPlugin, MethodCallHandler {
       mapOf("error" to (e.message ?: "Unknown error"))
     }
   }
+
+  // MARK: - Vision Model Support
+
+  private fun base64ToBitmap(base64String: String): Bitmap? {
+    return try {
+      val decodedBytes = Base64.decode(base64String, Base64.DEFAULT)
+      val inputStream = ByteArrayInputStream(decodedBytes)
+      BitmapFactory.decodeStream(inputStream)
+    } catch (e: Exception) {
+      Log.e("FlutterLeapSDK", "Error converting base64 to bitmap: ${e.message}")
+      null
+    }
+  }
+
+  private fun generateResponseWithImage(
+    message: String,
+    systemPrompt: String,
+    imageBase64: String,
+    generationOptions: Map<String, Any>?,
+    result: Result
+  ) {
+    val runner = modelRunner
+    if (runner == null) {
+      result.error("MODEL_NOT_LOADED", "Model is not loaded", null)
+      return
+    }
+
+    if (message.trim().isEmpty()) {
+      result.error("INVALID_INPUT", "Message cannot be empty", null)
+      return
+    }
+
+    if (imageBase64.isEmpty()) {
+      result.error("INVALID_INPUT", "Image data cannot be empty", null)
+      return
+    }
+
+    mainScope.launch(Dispatchers.IO) {
+      try {
+        val bitmap = base64ToBitmap(imageBase64)
+        if (bitmap == null) {
+          withContext(Dispatchers.Main) {
+            result.error("IMAGE_ERROR", "Failed to decode image", null)
+          }
+          return@launch
+        }
+
+        val conversation = runner.createConversation(systemPrompt)
+        val nativeOptions = createNativeGenerationOptions(generationOptions)
+
+        // Create image content
+        val imageContent = ChatMessageContent.Image.fromBitmap(bitmap, 85)
+        val textContent = ChatMessageContent.Text(message)
+        val messageContents = listOf(textContent, imageContent)
+        
+        // Create ChatMessage with mixed content
+        val chatMessage = ChatMessage(
+          role = Role.USER,
+          content = messageContents
+        )
+
+        var fullResponse = ""
+
+        conversation.generateResponse(chatMessage, nativeOptions)
+          .onEach { response ->
+            when (response) {
+              is MessageResponse.Chunk -> {
+                fullResponse += response.text
+              }
+              is MessageResponse.ReasoningChunk -> {
+                fullResponse += response.reasoning
+              }
+              is MessageResponse.Complete -> {
+                // Generation completed
+              }
+              else -> {
+                // Handle other response types
+              }
+            }
+          }
+          .collect { }
+
+        withContext(Dispatchers.Main) {
+          result.success(fullResponse)
+        }
+
+      } catch (e: Exception) {
+        withContext(Dispatchers.Main) {
+          result.error("GENERATION_ERROR", "Error generating response with image: ${e.message ?: "Unknown error"}", null)
+        }
+      }
+    }
+  }
+
+  private fun generateConversationResponseWithImage(
+    conversationId: String,
+    message: String,
+    imageBase64: String,
+    result: Result
+  ) {
+    val conversation = conversations[conversationId]
+    if (conversation == null) {
+      result.error("CONVERSATION_NOT_FOUND", "Conversation not found: $conversationId", null)
+      return
+    }
+
+    if (message.trim().isEmpty()) {
+      result.error("INVALID_INPUT", "Message cannot be empty", null)
+      return
+    }
+
+    if (imageBase64.isEmpty()) {
+      result.error("INVALID_INPUT", "Image data cannot be empty", null)
+      return
+    }
+
+    mainScope.launch(Dispatchers.IO) {
+      try {
+        val bitmap = base64ToBitmap(imageBase64)
+        if (bitmap == null) {
+          withContext(Dispatchers.Main) {
+            result.error("IMAGE_ERROR", "Failed to decode image", null)
+          }
+          return@launch
+        }
+
+        val storedOptions = conversationGenerationOptions[conversationId]
+        val nativeOptions = createNativeGenerationOptions(storedOptions)
+
+        // Create image content
+        val imageContent = ChatMessageContent.Image.fromBitmap(bitmap, 85)
+        val textContent = ChatMessageContent.Text(message)
+        val messageContents = listOf(textContent, imageContent)
+        
+        // Create ChatMessage with mixed content
+        val chatMessage = ChatMessage(
+          role = Role.USER,
+          content = messageContents
+        )
+
+        var fullResponse = ""
+
+        conversation.generateResponse(chatMessage, nativeOptions)
+          .onEach { response ->
+            when (response) {
+              is MessageResponse.Chunk -> {
+                fullResponse += response.text
+              }
+              is MessageResponse.ReasoningChunk -> {
+                fullResponse += response.reasoning
+              }
+              is MessageResponse.Complete -> {
+                // Conversation generation completed
+              }
+              else -> {
+                // Handle other response types
+              }
+            }
+          }
+          .collect { }
+
+        withContext(Dispatchers.Main) {
+          result.success(fullResponse)
+        }
+
+      } catch (e: Exception) {
+        withContext(Dispatchers.Main) {
+          result.error("GENERATION_ERROR", "Error generating conversation response with image: ${e.message ?: "Unknown error"}", null)
+        }
+      }
+    }
+  }
+
 }

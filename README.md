@@ -4,10 +4,10 @@ A Flutter plugin for integrating Liquid AI's LEAP SDK, enabling on-device deploy
 
 ## Platform Support
 
-| Platform | Status | Notes |
-|----------|--------|--------|
-| Android  | ✅ Fully Supported | API 31+, arm64-v8a, extensively tested |
-| iOS      | ⚠️  Supported | iOS 15+, 64-bit architecture, **not 100% tested** |
+| Platform | Text Models | Vision Models | Notes |
+|----------|-------------|---------------|--------|
+| Android  | ✅ Fully Supported | ✅ Fully Supported | API 31+, arm64-v8a, extensively tested |
+| iOS      | ⚠️  Supported | ❌ Not Supported | iOS 15+, 64-bit architecture, **not 100% tested** |
 
 ## Features
 
@@ -18,7 +18,8 @@ A Flutter plugin for integrating Liquid AI's LEAP SDK, enabling on-device deploy
 - ✅ **Function Calling**: Register and execute custom functions (experimental)
 - ✅ **Error Handling**: Comprehensive exception system with detailed error codes
 - ✅ **Memory Management**: Efficient model lifecycle with cleanup
-- ✅ **Built on Official LEAP SDK**: Uses Liquid AI's native SDK (v0.4.0)
+- ✅ **Built on Official LEAP SDK**: Uses Liquid AI's native SDK (v0.5.0)
+- ✅ **Vision Models Support**: Process images with LFM2-VL models (Android only)
 - ✅ **Secure Logging**: Production-safe logging system with sensitive data protection
 
 ## Getting Started
@@ -36,7 +37,7 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flutter_leap_sdk: ^0.1.1
+  flutter_leap_sdk: ^0.2.0
 ```
 
 ## Usage
@@ -81,6 +82,7 @@ All models are downloaded from Hugging Face and cached locally:
 | **LFM2-350M** | 322 MB | Smallest model | Basic chat, simple tasks, testing |
 | **LFM2-700M** | 610 MB | Balanced model | General purpose, good performance/size ratio |
 | **LFM2-1.2B** | 924 MB | Largest model | Best quality, complex reasoning tasks |
+| **LFM2-VL-1.6B** | 1.6 GB | Vision model | Image analysis, visual question answering (Android only) |
 
 > **Note**: Models are automatically downloaded to the app's documents directory under `/leap/` folder.
 
@@ -188,6 +190,37 @@ conversation.generateResponseStream('What are futures?').listen(
 print('History: ${conversation.history.length} messages');
 ```
 
+### Vision Models (Android Only)
+
+Work with images using LFM2-VL vision models:
+
+```dart
+// Load a vision model
+await FlutterLeapSdkService.loadModel(
+  modelPath: 'LFM2-VL-1.6B (Vision)',
+);
+
+// Create conversation for vision tasks
+Conversation visionChat = await FlutterLeapSdkService.createConversation(
+  systemPrompt: 'You are a helpful AI that can see and analyze images.',
+);
+
+// Analyze an image
+import 'dart:io';
+import 'dart:typed_data';
+
+File imageFile = File('/path/to/image.jpg');
+Uint8List imageBytes = await imageFile.readAsBytes();
+
+String response = await visionChat.generateResponseWithImage(
+  'What do you see in this image?',
+  imageBytes,
+);
+print('Vision response: $response');
+```
+
+> **⚠️ Platform Note**: Vision models are currently supported only on **Android**. iOS support for vision models is planned for future releases.
+
 ### Error Handling
 
 ```dart
@@ -218,6 +251,7 @@ try {
 #### Text Generation
 - `generateResponse(String message, {String? systemPrompt, GenerationOptions? options})` - Generate complete response
 - `generateResponseStream(String message, {String? systemPrompt, GenerationOptions? options})` - Streaming generation
+- `generateResponseWithImage(String message, Uint8List imageBytes, {String? systemPrompt, GenerationOptions? options})` - Generate response with image (Android only)
 - `cancelStreaming()` - Cancel active streaming
 
 #### Conversation Management
@@ -240,11 +274,15 @@ This package is built on top of Liquid AI's official LEAP SDK. For more informat
 
 **What's implemented:**
 - ✅ Complete Flutter-iOS bridge
-- ✅ Native LEAP SDK integration (v0.4.0)
+- ✅ Native LEAP SDK integration (v0.5.0)
 - ✅ Model loading and management
 - ✅ Text generation (blocking and streaming)
 - ✅ CocoaPods integration with `Leap-SDK`
 - ✅ iOS 15+ and Swift 5.9+ support
+
+**What's NOT implemented on iOS:**
+- ❌ Vision models (LFM2-VL) - Android only
+- ❌ Image processing with `generateResponseWithImage`
 
 **Testing status:**
 - ✅ Android: Extensively tested in production

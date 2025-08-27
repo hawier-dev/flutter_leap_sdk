@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'flutter_leap_sdk_service.dart';
 import 'models.dart';
 import 'exceptions.dart';
@@ -491,6 +492,50 @@ class Conversation {
     );
     addMessage(resultsMessage);
     
+  }
+
+  /// Generate a response with an image (for vision models)
+  /// 
+  /// Adds the user message and image to history and generates an assistant response.
+  /// This method requires a vision-capable model to be loaded.
+  Future<String> generateResponseWithImage(String userMessage, Uint8List imageBytes) async {
+    if (_isGenerating) {
+      throw GenerationException('Conversation is already generating a response', 'GENERATION_IN_PROGRESS');
+    }
+
+    if (userMessage.trim().isEmpty) {
+      throw GenerationException('Message cannot be empty', 'INVALID_INPUT');
+    }
+
+    if (imageBytes.isEmpty) {
+      throw GenerationException('Image data cannot be empty', 'INVALID_INPUT');
+    }
+
+    _isGenerating = true;
+    
+    try {
+      // Add user message with image to history
+      final userMsg = ChatMessage.user(userMessage);
+      addMessage(userMsg);
+
+      // Note: We're using the service-level method that bypasses conversation management
+      // because the native SDK conversation methods handle image content internally
+      final response = await FlutterLeapSdkService.generateResponseWithImage(
+        userMessage,
+        imageBytes,
+        systemPrompt: _systemPrompt,
+        generationOptions: _generationOptions,
+      );
+
+      // Add assistant response to history
+      final assistantMsg = ChatMessage.assistant(response);
+      addMessage(assistantMsg);
+
+      return response;
+      
+    } finally {
+      _isGenerating = false;
+    }
   }
 
 

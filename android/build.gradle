@@ -58,6 +58,6 @@ android {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-    implementation "ai.liquid.leap:leap-sdk:0.4.0"
+    implementation "ai.liquid.leap:leap-sdk:0.5.0"
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 }

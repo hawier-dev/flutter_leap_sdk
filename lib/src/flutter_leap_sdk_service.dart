@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -64,6 +65,13 @@ class FlutterLeapSdkService {
       url:
           'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle?download=true',
     ),
+    'LFM2-VL-1_6B_8da4w.bundle': ModelInfo(
+      fileName: 'LFM2-VL-1_6B_8da4w.bundle',
+      displayName: 'LFM2-VL-1.6B (Vision)',
+      size: '1.6 GB',
+      url:
+          'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-VL-1_6B_8da4w.bundle?download=true',
+    ),
   };
 
   String get currentLoadedModel => _currentLoadedModel;
@@ -104,6 +112,8 @@ class FlutterLeapSdkService {
           fileName = 'LFM2-700M-8da4w_output_8da8w-seq_4096.bundle';
         } else if (fileName == 'LFM2-1.2B') {
           fileName = 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle';
+        } else if (fileName == 'LFM2-VL-1.6B (Vision)') {
+          fileName = 'LFM2-VL-1_6B_8da4w.bundle';
         }
         // Or find by display name in availableModels
         else {
@@ -383,6 +393,8 @@ class FlutterLeapSdkService {
         fileName = 'LFM2-700M-8da4w_output_8da8w-seq_4096.bundle';
       } else if (fileName == 'LFM2-1.2B') {
         fileName = 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle';
+      } else if (fileName == 'LFM2-VL-1.6B (Vision)') {
+        fileName = 'LFM2-VL-1_6B_8da4w.bundle';
       }
       // Or find by display name in availableModels
       else {
@@ -900,4 +912,60 @@ class FlutterLeapSdkService {
       return {'error': e.toString()};
     }
   }
+
+  // MARK: - Vision Model Support
+
+  /// Generate a response with an image using the loaded vision model
+  static Future<String> generateResponseWithImage(
+    String message, 
+    Uint8List imageBytes, {
+    String? systemPrompt, 
+    GenerationOptions? generationOptions
+  }) async {
+    return await instance._generateResponseWithImage(
+      message, 
+      imageBytes, 
+      systemPrompt: systemPrompt, 
+      generationOptions: generationOptions
+    );
+  }
+  
+  Future<String> _generateResponseWithImage(
+    String message, 
+    Uint8List imageBytes, {
+    String? systemPrompt, 
+    GenerationOptions? generationOptions
+  }) async {
+    if (!_isModelLoaded) {
+      throw const ModelNotLoadedException();
+    }
+    
+    if (message.trim().isEmpty) {
+      throw GenerationException('Message cannot be empty', 'INVALID_INPUT');
+    }
+    
+    if (imageBytes.isEmpty) {
+      throw GenerationException('Image data cannot be empty', 'INVALID_INPUT');
+    }
+
+    try {
+      final String imageBase64 = base64Encode(imageBytes);
+      
+      final String result = await _channel.invokeMethod('generateResponseWithImage', {
+        'message': message,
+        'systemPrompt': systemPrompt ?? '',
+        'imageBase64': imageBase64,
+        'generationOptions': generationOptions?.toMap(),
+      });
+      
+      return result;
+      
+    } on PlatformException catch (e) {
+      throw GenerationException(
+        'Failed to generate response with image: ${e.message}',
+        e.code,
+      );
+    }
+  }
+
 }
