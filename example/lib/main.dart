@@ -405,9 +405,9 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
   double _downloadProgress = 0.0;
   
   Conversation? _conversation;
-  final List<ChatMessage> _messages = [];
   final TextEditingController _messageController = TextEditingController();
   bool _isGenerating = false;
+  String _currentResponse = '';
   
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
@@ -523,7 +523,7 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
     _messageController.clear();
 
     setState(() {
-      _messages.add(ChatMessage.user(userMessage));
+      _currentResponse = '';
       _isGenerating = true;
     });
 
@@ -532,12 +532,12 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
       final response = await _conversation!.generateResponseWithImage(userMessage, imageBytes);
       
       setState(() {
-        _messages.add(ChatMessage.assistant(response));
-        _selectedImage = null; // Clear after use
+        _currentResponse = response;
+        // Keep the selected image - don't clear it
       });
     } catch (e) {
       setState(() {
-        _messages.add(ChatMessage.assistant('Error: $e'));
+        _currentResponse = 'Error: $e';
       });
     } finally {
       setState(() {
@@ -603,17 +603,27 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
             child: Column(
               children: [
                 if (_selectedImage != null) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.file(
-                      _selectedImage!,
-                      height: 200,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    ),
+                  Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Image.file(
+                          _selectedImage!,
+                          height: 32,
+                          width: 32,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _selectedImage!.path.split('/').last,
+                          style: const TextStyle(fontSize: 14),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  Text('Selected image: ${_selectedImage!.path.split('/').last}'),
                   const SizedBox(height: 8),
                 ],
                 Row(
@@ -636,38 +646,69 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
             ),
           ),
           
-          // Messages
+          // Response Output
           Expanded(
-            child: ListView.builder(
+            child: Container(
+              margin: const EdgeInsets.all(16),
               padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final message = _messages[index];
-                final isUser = message.role == MessageRole.user;
-                
-                return Container(
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isUser ? Colors.blue.shade100 : Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
+                      Icon(Icons.smart_toy, color: Colors.grey.shade600, size: 20),
+                      const SizedBox(width: 8),
                       Text(
-                        isUser ? 'You' : 'Vision Assistant',
+                        'Vision Assistant Response:',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: isUser ? Colors.blue.shade800 : Colors.grey.shade800,
+                          color: Colors.grey.shade700,
+                          fontSize: 16,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(message.content),
                     ],
                   ),
-                );
-              },
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: _isGenerating
+                          ? Column(
+                              children: [
+                                const CircularProgressIndicator(),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Analyzing image...',
+                                  style: TextStyle(
+                                    color: Colors.grey.shade600,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : _currentResponse.isEmpty
+                              ? Text(
+                                  'Select an image and ask a question to see the response here.',
+                                  style: TextStyle(
+                                    color: Colors.grey.shade500,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                )
+                              : SelectableText(
+                                  _currentResponse,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    height: 1.5,
+                                  ),
+                                ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           
