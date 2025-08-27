@@ -296,32 +296,6 @@ This package is built on top of Liquid AI's official LEAP SDK. For more informat
 
 If you encounter iOS-specific issues, please [report them](https://github.com/hawier-dev/flutter_leap_sdk/issues) with device/OS details.
 
-## Troubleshooting
-
-### Common Issues
-
-**Model loading fails:**
-- Ensure device has sufficient RAM (3GB+ recommended)
-- Check model file integrity after download
-- Verify device architecture (arm64-v8a for Android)
-
-**Download issues:**
-- Check network connectivity
-- Ensure sufficient storage space
-- Try different model URLs if needed
-
-**iOS-specific issues:**
-- Verify iOS version (15.0+)
-- Check CocoaPods installation
-- Report iOS bugs with device details
-
-### Performance Tips
-
-- Use smaller models (LFM2-350M) for basic tasks
-- Monitor memory usage during model operations
-- Unload models when not needed to free memory
-- Use streaming for better user experience
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit Pull Requests or [file issues](https://github.com/hawier-dev/flutter_leap_sdk/issues).
