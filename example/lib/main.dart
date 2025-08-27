@@ -529,12 +529,26 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
 
     try {
       final imageBytes = await _selectedImage!.readAsBytes();
-      final response = await _conversation!.generateResponseWithImage(userMessage, imageBytes);
       
+      // Clear previous response and start streaming
       setState(() {
-        _currentResponse = response;
-        // Keep the selected image - don't clear it
+        _currentResponse = '';
       });
+      
+      // Use streaming response with image
+      await for (final chunk in FlutterLeapSdkService.generateResponseWithImageStream(
+        userMessage,
+        imageBytes,
+        systemPrompt: _conversation!.systemPrompt,
+        generationOptions: _conversation!.generationOptions,
+      )) {
+        if (mounted) {
+          setState(() {
+            _currentResponse += chunk;
+          });
+        }
+      }
+      
     } catch (e) {
       setState(() {
         _currentResponse = 'Error: $e';
