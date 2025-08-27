@@ -535,14 +535,12 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
         _currentResponse = '';
       });
       
-      // Use streaming response with image from conversation
-      await for (final chunk in _conversation!.generateResponseWithImageStream(userMessage, imageBytes)) {
-        if (mounted) {
-          setState(() {
-            _currentResponse += chunk;
-          });
-        }
-      }
+      // Generate response with image (vision models don't stream)
+      final response = await _conversation!.generateResponseWithImage(userMessage, imageBytes);
+      
+      setState(() {
+        _currentResponse = response;
+      });
       
     } catch (e) {
       setState(() {
