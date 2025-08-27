@@ -173,7 +173,8 @@ class _TextChatScreenState extends State<TextChatScreen> {
             ),
           ],
           implementation: (args) async {
-            final location = args['location'] as String;
+            final argsMap = Map<String, dynamic>.from(args);
+            final location = argsMap['location']?.toString() ?? 'Unknown';
             return {
               'location': location,
               'temperature': 22,
@@ -200,72 +201,25 @@ class _TextChatScreenState extends State<TextChatScreen> {
 
     final userMessage = _messageController.text.trim();
     _messageController.clear();
-
+    
     setState(() {
       _messages.add(ChatMessage.user(userMessage));
       _isGenerating = true;
     });
 
     try {
-      String assistantResponse = '';
-      bool hasFunctionCalls = false;
+      String response = '';
       
-      await for (final response in _conversation!.generateResponseStructured(userMessage)) {
-        if (response is MessageResponseChunk) {
-          assistantResponse += response.text;
-          setState(() {
-            if (_messages.isEmpty || _messages.last.role != MessageRole.assistant) {
-              _messages.add(ChatMessage.assistant(''));
-            }
-            _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse);
-          });
-        } else if (response is MessageResponseFunctionCalls) {
-          hasFunctionCalls = true;
-          // Execute functions
-          final results = <Map<String, dynamic>>[];
-          for (final call in response.functionCalls) {
-            try {
-              final result = await _conversation!.executeFunction(call);
-              results.add({'call': call.toMap(), 'result': result, 'success': true});
-            } catch (e) {
-              results.add({'call': call.toMap(), 'error': e.toString(), 'success': false});
-            }
+      await for (final chunk in _conversation!.generateResponseStream(userMessage)) {
+        response += chunk;
+        setState(() {
+          if (_messages.isEmpty || _messages.last.role != MessageRole.assistant) {
+            _messages.add(ChatMessage.assistant(''));
           }
-          
-          // Add results and show in UI
-          _conversation!.addFunctionResults(results);
-          
-          setState(() {
-            // Update current assistant response if exists
-            if (_messages.isNotEmpty && _messages.last.role == MessageRole.assistant) {
-              _messages[_messages.length - 1] = ChatMessage.assistant(assistantResponse);
-            }
-            
-            // Add function results as separate message
-            String functionInfo = '🔧 Function Results:\n';
-            for (final result in results) {
-              final success = result['success'] as bool;
-              
-              if (success) {
-                final functionResult = result['result'] as Map<String, dynamic>;
-                functionInfo += '📍 Weather in ${functionResult['location']}: ${functionResult['temperature']}°C, ${functionResult['description']}\n';
-              } else {
-                functionInfo += '❌ Error: ${result['error']}\n';
-              }
-            }
-            _messages.add(ChatMessage.assistant(functionInfo));
-          });
-        } else if (response is MessageResponseComplete) {
-          // Final response after function calls
-          if (hasFunctionCalls && response.message.content.isNotEmpty) {
-            setState(() {
-              // Add final response as separate message
-              _messages.add(ChatMessage.assistant('💬 ${response.message.content}'));
-            });
-          }
-          break;
-        }
+          _messages[_messages.length - 1] = ChatMessage.assistant(response);
+        });
       }
+      
     } catch (e) {
       setState(() {
         _messages.add(ChatMessage.assistant('Error: $e'));
@@ -286,29 +240,45 @@ class _TextChatScreenState extends State<TextChatScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             color: Colors.grey.shade100,
-            child: Row(
+            child: Column(
               children: [
-                if (_isDownloading) ...[
-                  const CircularProgressIndicator(),
-                  const SizedBox(width: 16),
-                  Text('Downloading... ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
-                ] else ...[
-                  ElevatedButton(
-                    onPressed: _downloadModel,
-                    child: const Text('Download Model'),
+                const Text(
+                  'Function Calling',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : _loadModel,
-                    child: _isLoading 
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Load Model'),
-                  ),
-                ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    if (_isDownloading) ...[
+                      const CircularProgressIndicator(),
+                      const SizedBox(width: 16),
+                      Text('Downloading... ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
+                    ] else ...[
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _downloadModel,
+                          child: const Text('Download Model'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _loadModel,
+                          child: _isLoading 
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('Load Model'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
@@ -528,29 +498,45 @@ class _RegularChatScreenState extends State<RegularChatScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             color: Colors.grey.shade100,
-            child: Row(
+            child: Column(
               children: [
-                if (_isDownloading) ...[
-                  const CircularProgressIndicator(),
-                  const SizedBox(width: 16),
-                  Text('Downloading... ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
-                ] else ...[
-                  ElevatedButton(
-                    onPressed: _downloadModel,
-                    child: const Text('Download Model'),
+                const Text(
+                  'Regular Chat',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : _loadModel,
-                    child: _isLoading 
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Load Model'),
-                  ),
-                ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    if (_isDownloading) ...[
+                      const CircularProgressIndicator(),
+                      const SizedBox(width: 16),
+                      Text('Downloading... ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
+                    ] else ...[
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _downloadModel,
+                          child: const Text('Download Model'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _loadModel,
+                          child: _isLoading 
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('Load Model'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
@@ -670,7 +656,7 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
         if (isLoaded && isVisionModel && _conversation != null) {
           _status = '🖼️ Vision model ready! Select an image and ask about it.';
         } else if (isLoaded && !isVisionModel) {
-          _status = '⚠️ Please load a vision model (LFM2-VL-1.6B) for image processing';
+          _status = '⚠️ Please load a vision model (LFM2-VL-450M) for image processing';
         } else if (isLoaded) {
           _status = '✅ Model ready - click Load to start vision chat';
         } else {
@@ -692,7 +678,7 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
 
     try {
       await FlutterLeapSdkService.downloadModel(
-        modelName: 'LFM2-VL-1.6B (Vision)',
+        modelName: 'LFM2-VL-450M (Vision)',
         onProgress: (progress) {
           setState(() {
             _downloadProgress = progress.percentage / 100.0;
@@ -718,7 +704,7 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
     });
     
     try {
-      await FlutterLeapSdkService.loadModel(modelPath: 'LFM2-VL-1.6B (Vision)');
+      await FlutterLeapSdkService.loadModel(modelPath: 'LFM2-VL-450M (Vision)');
       
       _conversation = await FlutterLeapSdkService.createConversation(
         systemPrompt: 'You are a helpful AI assistant that can see and analyze images. Describe what you see in detail and answer questions about the images.',
@@ -776,12 +762,24 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
         _currentResponse = '';
       });
       
-      // Generate response with image (vision models don't stream)
-      final response = await _conversation!.generateResponseWithImage(userMessage, imageBytes);
+      String response = '';
       
-      setState(() {
-        _currentResponse = response;
-      });
+      try {
+        await for (final chunk in _conversation!.generateResponseWithImageStream(userMessage, imageBytes)) {
+          response += chunk;
+          
+          if (mounted) {
+            setState(() {
+              _currentResponse = response;
+            });
+          }
+        }
+      } catch (streamError) {
+        final nonStreamResponse = await _conversation!.generateResponseWithImage(userMessage, imageBytes);
+        setState(() {
+          _currentResponse = nonStreamResponse;
+        });
+      }
       
     } catch (e) {
       setState(() {
@@ -803,33 +801,45 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           color: Colors.grey.shade100,
-          child: Row(
+          child: Column(
             children: [
-              if (_isDownloading) ...[
-                const CircularProgressIndicator(),
-                const SizedBox(width: 16),
-                Text('Downloading... ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
-              ] else if (_conversation == null) ...[
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _downloadModel,
-                    child: const Text('Download Vision'),
-                  ),
+              const Text(
+                'Vision Chat',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _loadModel,
-                    child: _isLoading 
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Load Vision'),
-                  ),
-                ),
-              ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  if (_isDownloading) ...[
+                    const CircularProgressIndicator(),
+                    const SizedBox(width: 16),
+                    Text('Downloading... ${(_downloadProgress * 100).toStringAsFixed(1)}%'),
+                  ] else if (_conversation == null) ...[
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _downloadModel,
+                        child: const Text('Download Vision'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _loadModel,
+                        child: _isLoading 
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Load Vision'),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ],
           ),
         ),
@@ -917,35 +927,62 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
                   const SizedBox(height: 12),
                   Expanded(
                     child: SingleChildScrollView(
-                      child: _isGenerating
-                          ? Column(
-                              children: [
-                                const CircularProgressIndicator(),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'Analyzing image...',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontStyle: FontStyle.italic,
-                                  ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (_isGenerating && _currentResponse.isEmpty) ...[
+                            const Center(child: CircularProgressIndicator()),
+                            const SizedBox(height: 16),
+                            Center(
+                              child: Text(
+                                'Analyzing image...',
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontStyle: FontStyle.italic,
                                 ),
-                              ],
-                            )
-                          : _currentResponse.isEmpty
-                              ? Text(
-                                  'Select an image and ask a question to see the response here.',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade500,
-                                    fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ],
+                          if (_currentResponse.isNotEmpty) ...[
+                            if (_isGenerating) ...[
+                              Row(
+                                children: [
+                                  SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
                                   ),
-                                )
-                              : SelectableText(
-                                  _currentResponse,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    height: 1.5,
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Generating...',
+                                    style: TextStyle(
+                                      color: Colors.blue.shade600,
+                                      fontSize: 12,
+                                      fontStyle: FontStyle.italic,
+                                    ),
                                   ),
-                                ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                            SelectableText(
+                              _currentResponse,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                          if (!_isGenerating && _currentResponse.isEmpty)
+                            Text(
+                              'Select an image and ask a question to see the response here.',
+                              style: TextStyle(
+                                color: Colors.grey.shade500,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ],

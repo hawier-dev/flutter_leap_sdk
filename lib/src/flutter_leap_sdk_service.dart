@@ -65,6 +65,13 @@ class FlutterLeapSdkService {
       url:
           'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle?download=true',
     ),
+    'LFM2-VL-450M_8da4w.bundle': ModelInfo(
+      fileName: 'LFM2-VL-450M_8da4w.bundle',
+      displayName: 'LFM2-VL-450M (Vision)',
+      size: '450 MB',
+      url:
+          'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-VL-450M_8da4w.bundle?download=true',
+    ),
     'LFM2-VL-1_6B_8da4w.bundle': ModelInfo(
       fileName: 'LFM2-VL-1_6B_8da4w.bundle',
       displayName: 'LFM2-VL-1.6B (Vision)',
@@ -112,6 +119,8 @@ class FlutterLeapSdkService {
           fileName = 'LFM2-700M-8da4w_output_8da8w-seq_4096.bundle';
         } else if (fileName == 'LFM2-1.2B') {
           fileName = 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle';
+        } else if (fileName == 'LFM2-VL-450M (Vision)') {
+          fileName = 'LFM2-VL-450M_8da4w.bundle';
         } else if (fileName == 'LFM2-VL-1.6B (Vision)') {
           fileName = 'LFM2-VL-1_6B_8da4w.bundle';
         }
@@ -393,6 +402,8 @@ class FlutterLeapSdkService {
         fileName = 'LFM2-700M-8da4w_output_8da8w-seq_4096.bundle';
       } else if (fileName == 'LFM2-1.2B') {
         fileName = 'LFM2-1.2B-8da4w_output_8da8w-seq_4096.bundle';
+      } else if (fileName == 'LFM2-VL-450M (Vision)') {
+        fileName = 'LFM2-VL-450M_8da4w.bundle';
       } else if (fileName == 'LFM2-VL-1.6B (Vision)') {
         fileName = 'LFM2-VL-1_6B_8da4w.bundle';
       }
@@ -776,7 +787,43 @@ class FlutterLeapSdkService {
               // For now, skip reasoning chunks in simple streaming
               break;
             case 'functionCalls':
-              // For now, skip function calls in simple streaming
+              // Handle function calls - execute them and return results as text
+              final functionCallsList = (dataMap['functionCalls'] as List?) ?? [];
+              final functionCalls = functionCallsList.map((call) => 
+                Map<String, dynamic>.from(call as Map)
+              ).toList();
+              for (final call in functionCalls) {
+                final functionName = call['name'] as String?;
+                final arguments = call['arguments'] != null 
+                    ? Map<String, dynamic>.from(call['arguments'] as Map)
+                    : <String, dynamic>{};
+                
+                if (functionName != null && arguments != null) {
+                  try {
+                    final result = await _channel.invokeMethod('executeFunction', {
+                      'conversationId': conversationId,
+                      'functionCall': {
+                        'name': functionName,
+                        'arguments': arguments,
+                      },
+                    });
+                    
+                    if (result is Map) {
+                      // Convert to proper type and format function result as text
+                      final resultMap = Map<String, dynamic>.from(result);
+                      final location = resultMap['location'] ?? 'Unknown';
+                      final temp = resultMap['temperature'] ?? 'N/A';
+                      final desc = resultMap['description'] ?? 'N/A';
+                      final resultText = '🌤️ Weather in $location: $temp°C, $desc';
+                      yield resultText;
+                    } else {
+                      yield 'Function executed but result format unexpected: $result';
+                    }
+                  } catch (e) {
+                    yield '❌ Error executing $functionName: $e';
+                  }
+                }
+              }
               break;
             case 'complete':
               // Stream end
@@ -905,9 +952,12 @@ class FlutterLeapSdkService {
   /// Handle function execution callback from native platforms
   Future<Map<String, dynamic>> _handleFunctionExecution(dynamic arguments) async {
     try {
-      final args = arguments as Map<String, dynamic>;
+      final args = Map<String, dynamic>.from(arguments as Map);
       final functionName = args['functionName'] as String;
-      final functionArgs = args['arguments'] as Map<String, dynamic>;
+      final functionArgsRaw = args['arguments'];
+      final functionArgs = functionArgsRaw != null 
+          ? Map<String, dynamic>.from(functionArgsRaw as Map)
+          : <String, dynamic>{};
 
 
       // Find the conversation and execute the function
@@ -986,6 +1036,96 @@ class FlutterLeapSdkService {
         'Failed to generate response with image: ${e.message}',
         e.code,
       );
+    }
+  }
+
+  /// Generate a streaming response with an image using the loaded vision model
+  static Stream<String> generateResponseWithImageStream(
+    String message, 
+    Uint8List imageBytes, {
+    String? systemPrompt, 
+    GenerationOptions? generationOptions
+  }) async* {
+    yield* instance._generateResponseWithImageStream(
+      message, 
+      imageBytes, 
+      systemPrompt: systemPrompt, 
+      generationOptions: generationOptions
+    );
+  }
+  
+  Stream<String> _generateResponseWithImageStream(
+    String message, 
+    Uint8List imageBytes, {
+    String? systemPrompt, 
+    GenerationOptions? generationOptions
+  }) async* {
+    if (!_isModelLoaded) {
+      throw const ModelNotLoadedException();
+    }
+    
+    if (message.trim().isEmpty) {
+      throw GenerationException('Message cannot be empty', 'INVALID_INPUT');
+    }
+    
+    if (imageBytes.isEmpty) {
+      throw GenerationException('Image data cannot be empty', 'INVALID_INPUT');
+    }
+
+    try {
+      final String imageBase64 = base64Encode(imageBytes);
+      
+      await _channel.invokeMethod('generateResponseWithImageStream', {
+        'message': message,
+        'systemPrompt': systemPrompt ?? '',
+        'imageBase64': imageBase64,
+        'generationOptions': generationOptions?.toMap(),
+      });
+
+      await for (final data in _streamChannel.receiveBroadcastStream()) {
+        if (data is String) {
+          if (data == '<STREAM_END>') {
+            break;
+          } else {
+            yield data;
+          }
+        }
+      }
+      
+    } on PlatformException catch (e) {
+      throw GenerationException(
+        'Failed to generate streaming response with image: ${e.message}',
+        e.code,
+      );
+    }
+  }
+
+  /// Internal method for conversation streaming response generation with image
+  static Stream<String> generateConversationResponseWithImageStream({
+    required String conversationId,
+    required String message,
+    required Uint8List imageBytes,
+  }) async* {
+    try {
+      final String imageBase64 = base64Encode(imageBytes);
+      await _channel.invokeMethod('generateConversationResponseWithImageStream', {
+        'conversationId': conversationId,
+        'message': message,
+        'imageBase64': imageBase64,
+      });
+
+      await for (final data in _streamChannel.receiveBroadcastStream()) {
+        if (data is String) {
+          if (data == '<STREAM_END>') {
+            break;
+          } else {
+            yield data;
+          }
+        }
+      }
+      
+    } on PlatformException catch (e) {
+      throw GenerationException('Failed to generate streaming response with image: ${e.message}', e.code);
     }
   }
 
