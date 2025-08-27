@@ -501,16 +501,10 @@ class _RegularChatScreenState extends State<RegularChatScreen> {
     });
 
     try {
-      String response = '';
-      await for (final chunk in _conversation!.generateResponse(userMessage)) {
-        response += chunk;
-        setState(() {
-          if (_messages.isEmpty || _messages.last.role != MessageRole.assistant) {
-            _messages.add(ChatMessage.assistant(''));
-          }
-          _messages[_messages.length - 1] = ChatMessage.assistant(response);
-        });
-      }
+      final response = await _conversation!.generateResponse(userMessage);
+      setState(() {
+        _messages.add(ChatMessage.assistant(response));
+      });
     } catch (e) {
       setState(() {
         _messages.add(ChatMessage.assistant('Error: $e'));
