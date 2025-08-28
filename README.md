@@ -17,7 +17,6 @@ A Flutter plugin for integrating Liquid AI's LEAP SDK, enabling on-device deploy
 - ✅ **Conversation Support**: Persistent conversation history and context
 - ✅ **Function Calling**: Register and execute custom functions (experimental)
 - ✅ **Error Handling**: Comprehensive exception system with detailed error codes
-- ✅ **Memory Management**: Efficient model lifecycle with cleanup
 - ✅ **Built on Official LEAP SDK**: Uses Liquid AI's native SDK (v0.5.0)
 - ✅ **Vision Models Support**: Process images with LFM2-VL models
 - ✅ **Secure Logging**: Production-safe logging system with sensitive data protection
