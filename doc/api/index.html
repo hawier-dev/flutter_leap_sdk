@@ -94,7 +94,7 @@
 <h3 id="installation">Installation</h3>
 <p>Add this to your <code>pubspec.yaml</code>:</p>
 <pre class="language-yaml"><code class="language-yaml">dependencies:
-  flutter_leap_sdk: ^0.2.2
+  flutter_leap_sdk: ^0.2.3
 </code></pre>
 <h2 id="usage">Usage</h2>
 <h3 id="basic-usage">Basic Usage</h3>
@@ -166,6 +166,16 @@ FlutterLeapSdkService.generateResponseStream('Hello, AI!').listen(
 <blockquote>
 <p><strong>Note</strong>: Models are automatically downloaded to the app's documents directory under <code>/leap/</code> folder.</p>
 </blockquote>
+<p>Here's how you can download and load a custom model programmatically:</p>
+<pre class="language-dart"><code class="language-dart">// To download a custom model
+await FlutterLeapSdkService.downloadModel(
+  modelUrl: 'https://example.com/model.bundle',
+  modelName: 'my-custom-model',
+);
+
+// To load the custom model
+await FlutterLeapSdkService.loadModel(modelPath: 'my-custom-model');
+</code></pre>
 <h3 id="complete-example">Complete Example</h3>
 <pre class="language-dart"><code class="language-dart">import 'package:flutter/material.dart';
 import 'package:flutter_leap_sdk/flutter_leap_sdk.dart';
@@ -376,7 +386,7 @@ print('Vision response: $response');
 <footer>
   <span class="no-break">
     flutter_leap_sdk
-      0.2.2
+      0.2.3
   </span>
   
 </footer>
