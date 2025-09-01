@@ -87,6 +87,19 @@ All models are downloaded from Hugging Face and cached locally:
 
 > **Note**: Models are automatically downloaded to the app's documents directory under `/leap/` folder.
 
+Here's how you can download and load a custom model programmatically:
+
+```dart
+// To download a custom model
+await FlutterLeapSdkService.downloadModel(
+  modelUrl: 'https://example.com/model.bundle',
+  modelName: 'my-custom-model',
+);
+
+// To load the custom model
+await FlutterLeapSdkService.loadModel(modelPath: 'my-custom-model');
+```
+
 ### Complete Example
 
 ```dart
