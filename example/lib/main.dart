@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_leap_sdk/flutter_leap_sdk.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'dart:typed_data';
 
 void main() {
   runApp(const MyApp());
@@ -38,6 +37,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
     const RegularChatScreen(),
     const TextChatScreen(),
     const VisionChatScreen(),
+    const CustomDownloadScreen(),
   ];
 
   @override
@@ -49,6 +49,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
       ),
       body: _screens[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
         currentIndex: _currentIndex,
         onTap: (index) {
           setState(() {
@@ -67,6 +68,10 @@ class _MainTabScreenState extends State<MainTabScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.image),
             label: 'Vision Chat',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.download),
+            label: 'Custom Download',
           ),
         ],
       ),
@@ -1027,5 +1032,396 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
         ],
       ],
     );
+  }
+}
+
+class CustomDownloadScreen extends StatefulWidget {
+  const CustomDownloadScreen({super.key});
+
+  @override
+  State<CustomDownloadScreen> createState() => _CustomDownloadScreenState();
+}
+
+class _CustomDownloadScreenState extends State<CustomDownloadScreen> {
+  final TextEditingController _urlController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  bool _isDownloading = false;
+  bool _isLoading = false;
+  double _downloadProgress = 0.0;
+  String _status = '📥 Ready to download custom models';
+  String _downloadSpeed = '';
+  
+  Conversation? _conversation;
+  final List<ChatMessage> _messages = [];
+  final TextEditingController _messageController = TextEditingController();
+  bool _isGenerating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    FlutterLeapSdkService.initialize();
+    _checkStatus();
+  }
+
+  Future<void> _checkStatus() async {
+    try {
+      final isLoaded = FlutterLeapSdkService.modelLoaded;
+      setState(() {
+        if (isLoaded && _conversation != null) {
+          _status = '🚀 Custom model ready to chat!';
+        } else if (isLoaded) {
+          _status = '✅ Model ready - click Load to start chat';
+        } else {
+          _status = '📥 Enter URL and name to download custom model';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _status = '❌ Error: $e';
+      });
+    }
+  }
+
+  Future<void> _downloadCustomModel() async {
+    if (_urlController.text.trim().isEmpty || _nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter both URL and model name')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isDownloading = true;
+      _downloadProgress = 0.0;
+      _downloadSpeed = '';
+      _status = 'Downloading custom model...';
+    });
+
+    try {
+      await FlutterLeapSdkService.downloadModel(
+        modelUrl: _urlController.text.trim(),
+        modelName: _nameController.text.trim(),
+        onProgress: (progress) {
+          setState(() {
+            _downloadProgress = progress.percentage / 100.0;
+            _downloadSpeed = progress.speed;
+            _status = 'Downloading... ${progress.percentage.toStringAsFixed(1)}% (${progress.speed})';
+            if (progress.isComplete) {
+              _isDownloading = false;
+              _status = '✅ Downloaded! Click Load to use the model.';
+            }
+          });
+        },
+      );
+    } catch (e) {
+      setState(() {
+        _isDownloading = false;
+        _status = '❌ Download failed: $e';
+      });
+    }
+  }
+
+  Future<void> _loadCustomModel() async {
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter model name')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _status = 'Loading custom model...';
+    });
+    
+    try {
+      await FlutterLeapSdkService.loadModel(modelPath: _nameController.text.trim());
+      
+      _conversation = await FlutterLeapSdkService.createConversation(
+        systemPrompt: 'You are a helpful AI assistant.',
+      );
+      
+      setState(() {
+        _isLoading = false;
+        _status = '🚀 Custom model ready to chat!';
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _status = '❌ Load failed: $e';
+      });
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    if (_messageController.text.trim().isEmpty || _conversation == null) return;
+
+    final userMessage = _messageController.text.trim();
+    _messageController.clear();
+
+    setState(() {
+      _messages.add(ChatMessage.user(userMessage));
+      _isGenerating = true;
+    });
+
+    try {
+      String response = '';
+      await for (final chunk in _conversation!.generateResponseStream(userMessage)) {
+        response += chunk;
+        setState(() {
+          if (_messages.isEmpty || _messages.last.role != MessageRole.assistant) {
+            _messages.add(ChatMessage.assistant(''));
+          }
+          _messages[_messages.length - 1] = ChatMessage.assistant(response);
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _messages.add(ChatMessage.assistant('Error: $e'));
+      });
+    } finally {
+      setState(() {
+        _isGenerating = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Header section
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          color: Colors.grey.shade100,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.download, size: 24),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Custom Model Download',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _status,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        // Input section
+        if (_conversation == null) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _urlController,
+                  decoration: const InputDecoration(
+                    labelText: 'Model URL',
+                    hintText: 'https://example.com/model.bundle',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.link),
+                  ),
+                  enabled: !_isDownloading && !_isLoading,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Model Name',
+                    hintText: 'my-custom-model',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.edit),
+                  ),
+                  enabled: !_isDownloading && !_isLoading,
+                ),
+                const SizedBox(height: 16),
+                
+                if (_isDownloading) ...[
+                  Column(
+                    children: [
+                      LinearProgressIndicator(value: _downloadProgress),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${(_downloadProgress * 100).toStringAsFixed(1)}% - $_downloadSpeed',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _downloadCustomModel,
+                          icon: const Icon(Icons.download),
+                          label: const Text('Download'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _isLoading ? null : _loadCustomModel,
+                          icon: _isLoading 
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.play_arrow),
+                          label: const Text('Load'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 8),
+                
+                // Example URLs
+                Text(
+                  'Example URLs:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _buildExampleUrlTile(
+                  'LFM2-350M',
+                  'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-350M-8da4w_output_8da8w-seq_4096.bundle?download=true',
+                ),
+                _buildExampleUrlTile(
+                  'LFM2-VL-450M',
+                  'https://huggingface.co/LiquidAI/LeapBundles/resolve/main/LFM2-VL-450M_8da4w.bundle?download=true',
+                ),
+              ],
+            ),
+          ),
+        ],
+        
+        // Chat section
+        if (_conversation != null) ...[
+          // Messages
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                final message = _messages[index];
+                final isUser = message.role == MessageRole.user;
+                
+                return Container(
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isUser ? Colors.blue.shade100 : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isUser ? 'You' : 'Custom Model',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: isUser ? Colors.blue.shade800 : Colors.grey.shade800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(message.content),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          
+          // Input section
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Colors.grey.shade300)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _messageController,
+                    decoration: const InputDecoration(
+                      hintText: 'Chat with your custom model...',
+                      border: OutlineInputBorder(),
+                    ),
+                    onSubmitted: (_) => _sendMessage(),
+                    enabled: !_isGenerating,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _isGenerating ? null : _sendMessage,
+                  child: _isGenerating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildExampleUrlTile(String name, String url) {
+    return Card(
+      child: ListTile(
+        title: Text(name),
+        subtitle: Text(
+          url,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.copy),
+          onPressed: () {
+            _urlController.text = url;
+            _nameController.text = name;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Copied $name URL and name')),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    _nameController.dispose();
+    _messageController.dispose();
+    super.dispose();
   }
 }
