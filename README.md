@@ -37,7 +37,7 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flutter_leap_sdk: ^0.2.2
+  flutter_leap_sdk: ^0.2.3
 ```
 
 ## Usage
