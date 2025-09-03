@@ -87,7 +87,7 @@ class TextChatScreen extends StatefulWidget {
 }
 
 class _TextChatScreenState extends State<TextChatScreen> {
-  String _status = 'Initializing...';
+  // String _status = 'Initializing...'; // Unused field removed
   bool _isDownloading = false;
   bool _isLoading = false;
   double _downloadProgress = 0.0;
@@ -373,7 +373,7 @@ class RegularChatScreen extends StatefulWidget {
 }
 
 class _RegularChatScreenState extends State<RegularChatScreen> {
-  String _status = 'Initializing...';
+  // String _status = 'Initializing...'; // Unused field removed
   bool _isDownloading = false;
   bool _isLoading = false;
   double _downloadProgress = 0.0;
@@ -631,7 +631,7 @@ class VisionChatScreen extends StatefulWidget {
 }
 
 class _VisionChatScreenState extends State<VisionChatScreen> {
-  String _status = 'Initializing...';
+  // String _status = 'Initializing...'; // Unused field removed
   bool _isDownloading = false;
   bool _isLoading = false;
   double _downloadProgress = 0.0;
@@ -736,9 +736,11 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to pick image: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to pick image: $e')),
+        );
+      }
     }
   }
 

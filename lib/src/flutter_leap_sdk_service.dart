@@ -798,7 +798,7 @@ class FlutterLeapSdkService {
                     ? Map<String, dynamic>.from(call['arguments'] as Map)
                     : <String, dynamic>{};
                 
-                if (functionName != null && arguments != null) {
+                if (functionName.isNotEmpty) {
                   try {
                     final result = await _channel.invokeMethod('executeFunction', {
                       'conversationId': conversationId,

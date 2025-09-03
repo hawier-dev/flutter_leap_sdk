@@ -169,9 +169,12 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                             fullResponse += text
                         case .functionCall(let calls):
                             // Function calls are handled separately in structured streaming
+                            break
                         case .complete(let fullText, let completeInfo):
                             break
                         @unknown default:
+                        break
+                            break
                         }
                     }
                 } catch {
@@ -253,6 +256,7 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                             }
                         case .functionCall(let calls):
                             // Function calls are handled separately in structured streaming
+                            break
                         case .complete(let fullText, let completeInfo):
                             await MainActor.run {
                                 if let sink = self.eventSink {
@@ -262,6 +266,8 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                             }
                             break
                         @unknown default:
+                        break
+                            break
                         }
                     }
                 } catch {
@@ -442,9 +448,12 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                             fullResponse += text
                         case .functionCall(let calls):
                             // Function calls are handled separately in structured streaming
+                            break
                         case .complete(let fullText, let completeInfo):
                             break
                         @unknown default:
+                        break
+                            break
                         }
                     }
                 } catch {
@@ -883,9 +892,12 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                     case .reasoningChunk(let text):
                         fullResponse += text
                     case .functionCall(let calls):
+                        break
                     case .complete(let fullText, let completeInfo):
                         break
                     @unknown default:
+                        break
+                        break
                     }
                 }
                 
@@ -954,9 +966,12 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                     case .reasoningChunk(let text):
                         fullResponse += text
                     case .functionCall(let calls):
+                        break
                     case .complete(let fullText, let completeInfo):
                         break
                     @unknown default:
+                        break
+                        break
                     }
                 }
                 
@@ -1056,6 +1071,7 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                             }
                         }
                     case .functionCall(let calls):
+                        break
                     case .complete(let fullText, let completeInfo):
                         await MainActor.run {
                             if let sink = self.eventSink {
@@ -1065,6 +1081,7 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                         }
                         break
                     @unknown default:
+                        break
                     }
                 }
                 
@@ -1153,6 +1170,7 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                             }
                         }
                     case .functionCall(let calls):
+                        break
                     case .complete(let fullText, let completeInfo):
                         await MainActor.run {
                             if let sink = self.eventSink {
@@ -1162,6 +1180,7 @@ public class FlutterLeapSdkPlugin: NSObject, FlutterPlugin {
                         }
                         break
                     @unknown default:
+                        break
                     }
                 }
                 
