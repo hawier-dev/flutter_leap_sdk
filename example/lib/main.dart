@@ -87,7 +87,6 @@ class TextChatScreen extends StatefulWidget {
 }
 
 class _TextChatScreenState extends State<TextChatScreen> {
-  // String _status = 'Initializing...'; // Unused field removed
   bool _isDownloading = false;
   bool _isLoading = false;
   double _downloadProgress = 0.0;
@@ -109,16 +108,16 @@ class _TextChatScreenState extends State<TextChatScreen> {
       final isLoaded = FlutterLeapSdkService.modelLoaded;
       setState(() {
         if (isLoaded && _conversation != null) {
-          _status = '🚀 Ready to chat! Try: "What\'s the weather in Paris?"';
+          // Status: '🚀 Ready to chat! Try: "What\'s the weather in Paris?"';
         } else if (isLoaded) {
-          _status = '✅ Model ready - click Load to start chat';
+          // Status: '✅ Model ready - click Load to start chat';
         } else {
-          _status = '⬇️ Need to download model';
+          // Status: '⬇️ Need to download model';
         }
       });
     } catch (e) {
       setState(() {
-        _status = '❌ Error: $e';
+        // Status: '❌ Error: $e';
       });
     }
   }
@@ -137,7 +136,7 @@ class _TextChatScreenState extends State<TextChatScreen> {
             _downloadProgress = progress.percentage / 100.0;
             if (progress.isComplete) {
               _isDownloading = false;
-              _status = '✅ Downloaded! Loading model...';
+              // Status: '✅ Downloaded! Loading model...';
               _loadModel();
             }
           });
@@ -146,7 +145,7 @@ class _TextChatScreenState extends State<TextChatScreen> {
     } catch (e) {
       setState(() {
         _isDownloading = false;
-        _status = '❌ Download failed: $e';
+        // Status: '❌ Download failed: $e';
       });
     }
   }
@@ -191,12 +190,12 @@ class _TextChatScreenState extends State<TextChatScreen> {
       
       setState(() {
         _isLoading = false;
-        _status = '🚀 Ready to chat! Try: "What\'s the weather in Paris?"';
+        // Status: '🚀 Ready to chat! Try: "What\'s the weather in Paris?"';
       });
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _status = '❌ Load failed: $e';
+        // Status: '❌ Load failed: $e';
       });
     }
   }
@@ -373,7 +372,6 @@ class RegularChatScreen extends StatefulWidget {
 }
 
 class _RegularChatScreenState extends State<RegularChatScreen> {
-  // String _status = 'Initializing...'; // Unused field removed
   bool _isDownloading = false;
   bool _isLoading = false;
   double _downloadProgress = 0.0;
@@ -395,16 +393,16 @@ class _RegularChatScreenState extends State<RegularChatScreen> {
       final isLoaded = FlutterLeapSdkService.modelLoaded;
       setState(() {
         if (isLoaded && _conversation != null) {
-          _status = '💬 Ready to chat!';
+          // Status: '💬 Ready to chat!';
         } else if (isLoaded) {
-          _status = '✅ Model ready - click Load to start chat';
+          // Status: '✅ Model ready - click Load to start chat';
         } else {
-          _status = '⬇️ Need to download model';
+          // Status: '⬇️ Need to download model';
         }
       });
     } catch (e) {
       setState(() {
-        _status = '❌ Error: $e';
+        // Status: '❌ Error: $e';
       });
     }
   }
@@ -423,7 +421,7 @@ class _RegularChatScreenState extends State<RegularChatScreen> {
             _downloadProgress = progress.percentage / 100.0;
             if (progress.isComplete) {
               _isDownloading = false;
-              _status = '✅ Downloaded! Loading model...';
+              // Status: '✅ Downloaded! Loading model...';
               _loadModel();
             }
           });
@@ -432,7 +430,7 @@ class _RegularChatScreenState extends State<RegularChatScreen> {
     } catch (e) {
       setState(() {
         _isDownloading = false;
-        _status = '❌ Download failed: $e';
+        // Status: '❌ Download failed: $e';
       });
     }
   }
@@ -451,12 +449,12 @@ class _RegularChatScreenState extends State<RegularChatScreen> {
       
       setState(() {
         _isLoading = false;
-        _status = '💬 Ready to chat!';
+        // Status: '💬 Ready to chat!';
       });
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _status = '❌ Load failed: $e';
+        // Status: '❌ Load failed: $e';
       });
     }
   }
@@ -631,7 +629,6 @@ class VisionChatScreen extends StatefulWidget {
 }
 
 class _VisionChatScreenState extends State<VisionChatScreen> {
-  // String _status = 'Initializing...'; // Unused field removed
   bool _isDownloading = false;
   bool _isLoading = false;
   double _downloadProgress = 0.0;
@@ -659,18 +656,18 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
       
       setState(() {
         if (isLoaded && isVisionModel && _conversation != null) {
-          _status = '🖼️ Vision model ready! Select an image and ask about it.';
+          // Status: '🖼️ Vision model ready! Select an image and ask about it.';
         } else if (isLoaded && !isVisionModel) {
-          _status = '⚠️ Please load a vision model (LFM2-VL-450M) for image processing';
+          // Status: '⚠️ Please load a vision model (LFM2-VL-450M) for image processing';
         } else if (isLoaded) {
-          _status = '✅ Model ready - click Load to start vision chat';
+          // Status: '✅ Model ready - click Load to start vision chat';
         } else {
-          _status = '⬇️ Need to download vision model';
+          // Status: '⬇️ Need to download vision model';
         }
       });
     } catch (e) {
       setState(() {
-        _status = '❌ Error: $e';
+        // Status: '❌ Error: $e';
       });
     }
   }
@@ -689,7 +686,7 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
             _downloadProgress = progress.percentage / 100.0;
             if (progress.isComplete) {
               _isDownloading = false;
-              _status = '✅ Downloaded! Loading vision model...';
+              // Status: '✅ Downloaded! Loading vision model...';
               _loadModel();
             }
           });
@@ -698,7 +695,7 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
     } catch (e) {
       setState(() {
         _isDownloading = false;
-        _status = '❌ Download failed: $e';
+        // Status: '❌ Download failed: $e';
       });
     }
   }
@@ -717,12 +714,12 @@ class _VisionChatScreenState extends State<VisionChatScreen> {
       
       setState(() {
         _isLoading = false;
-        _status = '🖼️ Vision model ready! Select an image and ask about it.';
+        // Status: '🖼️ Vision model ready! Select an image and ask about it.';
       });
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _status = '❌ Load failed: $e';
+        // Status: '❌ Load failed: $e';
       });
     }
   }
@@ -1079,7 +1076,7 @@ class _CustomDownloadScreenState extends State<CustomDownloadScreen> {
       });
     } catch (e) {
       setState(() {
-        _status = '❌ Error: $e';
+        // Status: '❌ Error: $e';
       });
     }
   }
@@ -1096,7 +1093,7 @@ class _CustomDownloadScreenState extends State<CustomDownloadScreen> {
       _isDownloading = true;
       _downloadProgress = 0.0;
       _downloadSpeed = '';
-      _status = 'Downloading custom model...';
+      // Status: 'Downloading custom model...';
     });
 
     try {
@@ -1107,10 +1104,10 @@ class _CustomDownloadScreenState extends State<CustomDownloadScreen> {
           setState(() {
             _downloadProgress = progress.percentage / 100.0;
             _downloadSpeed = progress.speed;
-            _status = 'Downloading... ${progress.percentage.toStringAsFixed(1)}% (${progress.speed})';
+            // Status: 'Downloading... ${progress.percentage.toStringAsFixed(1)}% (${progress.speed})';
             if (progress.isComplete) {
               _isDownloading = false;
-              _status = '✅ Downloaded! Click Load to use the model.';
+              // Status: '✅ Downloaded! Click Load to use the model.';
             }
           });
         },
@@ -1118,7 +1115,7 @@ class _CustomDownloadScreenState extends State<CustomDownloadScreen> {
     } catch (e) {
       setState(() {
         _isDownloading = false;
-        _status = '❌ Download failed: $e';
+        // Status: '❌ Download failed: $e';
       });
     }
   }
@@ -1133,7 +1130,7 @@ class _CustomDownloadScreenState extends State<CustomDownloadScreen> {
 
     setState(() {
       _isLoading = true;
-      _status = 'Loading custom model...';
+      // Status: 'Loading custom model...';
     });
     
     try {
@@ -1145,12 +1142,12 @@ class _CustomDownloadScreenState extends State<CustomDownloadScreen> {
       
       setState(() {
         _isLoading = false;
-        _status = '🚀 Custom model ready to chat!';
+        // Status: '🚀 Custom model ready to chat!';
       });
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _status = '❌ Load failed: $e';
+        // Status: '❌ Load failed: $e';
       });
     }
   }

@@ -339,7 +339,7 @@ class FlutterLeapSdkService {
       LeapLogger.info('Function "$functionName" unregistered successfully');
       return result;
     } on PlatformException catch (e) {
-      LeapLogger.error('Failed to unregister function "$functionName"', e);
+      LeapLogger.error('Failed to unregister function "$functionName": $e');
       throw FlutterLeapSdkException(
         'Failed to unregister function: ${e.message}',
         e.code,
@@ -366,7 +366,7 @@ class FlutterLeapSdkService {
       LeapLogger.info('Function "$functionName" executed successfully');
       return typedResult;
     } on PlatformException catch (e) {
-      LeapLogger.error('Failed to execute function', e);
+      LeapLogger.error('Failed to execute function: $e');
       throw FlutterLeapSdkException(
         'Failed to execute function: ${e.message}',
         e.code,
@@ -798,7 +798,7 @@ class FlutterLeapSdkService {
                     ? Map<String, dynamic>.from(call['arguments'] as Map)
                     : <String, dynamic>{};
                 
-                if (functionName.isNotEmpty) {
+                if (functionName != null && functionName.isNotEmpty) {
                   try {
                     final result = await _channel.invokeMethod('executeFunction', {
                       'conversationId': conversationId,
